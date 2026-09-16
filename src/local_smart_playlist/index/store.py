@@ -1,0 +1,272 @@
+"""SQLite + sqlite-vec track vector store."""
+
+from __future__ import annotations
+
+import sqlite3
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, cast
+
+import numpy as np
+import sqlite_vec
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from os import PathLike
+
+SCHEMA_VERSION = "1"
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tracks (
+    rel_path TEXT PRIMARY KEY,
+    mean_vec BLOB NOT NULL,
+    p90_vec BLOB NOT NULL,
+    n_windows INTEGER NOT NULL,
+    duration REAL NOT NULL,
+    title TEXT NOT NULL,
+    model TEXT NOT NULL,
+    indexed_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS failures (
+    rel_path TEXT PRIMARY KEY,
+    error TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 1,
+    last_at TEXT NOT NULL
+);
+"""
+
+
+def now_iso() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def _serialize(vec: np.ndarray) -> bytes:
+    return sqlite_vec.serialize_float32(np.ascontiguousarray(vec, dtype=np.float32).tolist())
+
+
+def _deserialize(blob: bytes, dim: int) -> np.ndarray:
+    arr = np.frombuffer(blob, dtype=np.float32)
+    if arr.size != dim:
+        msg = f"vector size mismatch: {arr.size} != {dim}"
+        raise ValueError(msg)
+    return arr.copy()
+
+
+@dataclass(frozen=True)
+class TrackRow:
+    rel_path: str
+    mean_vec: np.ndarray
+    p90_vec: np.ndarray
+    n_windows: int
+    duration: float
+    title: str
+    model: str
+
+
+@dataclass(frozen=True)
+class KnnHit:
+    rel_path: str
+    title: str
+    distance: float
+
+
+class Store:
+    """Track-level vector store backed by sqlite + sqlite-vec."""
+
+    def __init__(self, db_path: str | bytes | PathLike[str], embed_dim: int = 512) -> None:
+        self._embed_dim = embed_dim
+        self._conn = sqlite3.connect(db_path)
+        self._conn.enable_load_extension(True)
+        sqlite_vec.load(self._conn)
+        self._conn.enable_load_extension(False)
+        self._migrate()
+
+    # -- lifecycle ---------------------------------------------------------
+
+    def close(self) -> None:
+        self._conn.close()
+
+    def __enter__(self) -> Store:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    def _migrate(self) -> None:
+        _ = self._conn.executescript(_SCHEMA)
+        row = self._conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+        if row is None:
+            self.set_meta("schema_version", SCHEMA_VERSION)
+        elif row[0] != SCHEMA_VERSION:
+            msg = f"index schema v{row[0]} does not match v{SCHEMA_VERSION}; delete the index or pin a release"
+            raise RuntimeError(msg)
+        self._ensure_vec_table()
+
+    def _ensure_vec_table(self) -> None:
+        """Recreate (and repopulate) the vec0 table if missing; hard-fail on dim mismatch."""
+        stored_dim = self.get_meta("vec_dim")
+        if stored_dim is not None and int(stored_dim) != self._embed_dim:
+            msg = f"index has {stored_dim}-dim vectors but {self._embed_dim} requested; delete the index and re-index"
+            raise RuntimeError(msg)
+        table = self._conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='tracks_vec'"
+        ).fetchone()
+        if table is not None:
+            return
+        self._rebuild_vec_table()
+        # Repopulate from the durable tracks table so the vec index never lags it.
+        rows = self._conn.execute("SELECT rel_path, mean_vec FROM tracks").fetchall()
+        _ = self._conn.executemany(
+            "INSERT OR REPLACE INTO tracks_vec(rel_path, mean_vec) VALUES (?, ?)",
+            [(r[0], r[1]) for r in rows],
+        )
+        self._conn.commit()
+
+    def _rebuild_vec_table(self) -> None:
+        _ = self._conn.execute("DROP TABLE IF EXISTS tracks_vec")
+        _ = self._conn.execute(
+            f"""
+            CREATE VIRTUAL TABLE tracks_vec USING vec0(
+                rel_path TEXT PRIMARY KEY,
+                mean_vec FLOAT[{self._embed_dim}] distance_metric=cosine
+            )
+            """
+        )
+        self.set_meta("vec_dim", str(self._embed_dim))
+
+    # -- meta --------------------------------------------------------------
+
+    def set_meta(self, key: str, value: str) -> None:
+        _ = self._conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", (key, value))
+        self._conn.commit()
+
+    def get_meta(self, key: str) -> str | None:
+        row = self._conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        if row is None:
+            return None
+        return cast("str", row[0])
+
+    # -- indexing ----------------------------------------------------------
+
+    def has_track(self, rel_path: str) -> bool:
+        result: object | None = self._conn.execute("SELECT 1 FROM tracks WHERE rel_path = ?", (rel_path,)).fetchone()
+        return result is not None
+
+    def upsert(
+        self,
+        *,
+        rel_path: str,
+        mean_vec: np.ndarray,
+        p90_vec: np.ndarray,
+        n_windows: int,
+        duration: float,
+        title: str,
+        model: str,
+        indexed_at: str,
+    ) -> None:
+        _ = self._conn.execute(
+            """
+            INSERT OR REPLACE INTO tracks(rel_path, mean_vec, p90_vec, n_windows, duration, title, model, indexed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                rel_path,
+                _serialize(mean_vec),
+                _serialize(p90_vec),
+                n_windows,
+                duration,
+                title,
+                model,
+                indexed_at,
+            ),
+        )
+        _ = self._conn.execute(
+            "INSERT OR REPLACE INTO tracks_vec(rel_path, mean_vec) VALUES (?, ?)",
+            (rel_path, _serialize(mean_vec)),
+        )
+        _ = self._conn.execute("DELETE FROM failures WHERE rel_path = ?", (rel_path,))
+        self._conn.commit()
+
+    def record_failure(self, *, rel_path: str, error: str, now: str) -> None:
+        row = self._conn.execute("SELECT attempts FROM failures WHERE rel_path = ?", (rel_path,)).fetchone()
+        attempts = (cast("int", row[0]) + 1) if row is not None else 1
+        _ = self._conn.execute(
+            """
+            INSERT OR REPLACE INTO failures(rel_path, error, attempts, last_at) VALUES (?, ?, ?, ?)
+            """,
+            (rel_path, error, attempts, now),
+        )
+        self._conn.commit()
+
+    def prune_missing(self, valid_rel_paths: Iterable[str]) -> int:
+        """Drop tracks/failures no longer on disk; returns number removed."""
+        valid = set(valid_rel_paths)
+        tracks = self._conn.execute("SELECT rel_path FROM tracks").fetchall()
+        stale = [cast("str", r[0]) for r in tracks if cast("str", r[0]) not in valid]
+        failures = self._conn.execute("SELECT rel_path FROM failures").fetchall()
+        fstale = [cast("str", r[0]) for r in failures if cast("str", r[0]) not in valid]
+        _ = self._conn.executemany("DELETE FROM tracks WHERE rel_path = ?", [(p,) for p in stale])
+        _ = self._conn.executemany("DELETE FROM tracks_vec WHERE rel_path = ?", [(p,) for p in stale])
+        _ = self._conn.executemany("DELETE FROM failures WHERE rel_path = ?", [(p,) for p in fstale])
+        self._conn.commit()
+        return len(stale) + len(fstale)
+
+    # -- stats -------------------------------------------------------------
+
+    def track_count(self) -> int:
+        row = self._conn.execute("SELECT COUNT(*) FROM tracks").fetchone()
+        return cast("int", row[0])
+
+    def failure_count(self) -> int:
+        row = self._conn.execute("SELECT COUNT(*) FROM failures").fetchone()
+        return cast("int", row[0])
+
+    def list_failures(self, limit: int = 20) -> list[tuple[str, str, int]]:
+        rows = self._conn.execute(
+            "SELECT rel_path, error, attempts FROM failures ORDER BY rel_path LIMIT ?", (limit,)
+        ).fetchall()
+        return [(cast("str", r[0]), cast("str", r[1]), cast("int", r[2])) for r in rows]
+
+    # -- search ------------------------------------------------------------
+
+    def knn(self, *, query_vec: np.ndarray, k: int) -> list[KnnHit]:
+        """Nearest tracks by cosine distance on the mean vector."""
+        rows = self._conn.execute(
+            """
+            SELECT v.rel_path, t.title, v.distance
+            FROM tracks_vec v
+            JOIN tracks t USING (rel_path)
+            WHERE v.mean_vec MATCH ? AND k = ?
+            ORDER BY v.distance
+            """,
+            (_serialize(query_vec), k),
+        ).fetchall()
+        return [
+            KnnHit(
+                rel_path=cast("str", r[0]),
+                title=cast("str", r[1]),
+                distance=cast("float", r[2]),
+            )
+            for r in rows
+        ]
+
+    def get_track(self, rel_path: str) -> TrackRow | None:
+        row = self._conn.execute(
+            "SELECT rel_path, mean_vec, p90_vec, n_windows, duration, title, model FROM tracks WHERE rel_path = ?",
+            (rel_path,),
+        ).fetchone()
+        if row is None:
+            return None
+        return TrackRow(
+            rel_path=cast("str", row[0]),
+            mean_vec=_deserialize(cast("bytes", row[1]), self._embed_dim),
+            p90_vec=_deserialize(cast("bytes", row[2]), self._embed_dim),
+            n_windows=cast("int", row[3]),
+            duration=cast("float", row[4]),
+            title=cast("str", row[5]),
+            model=cast("str", row[6]),
+        )

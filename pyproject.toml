@@ -1,0 +1,114 @@
+[project]
+name = "local-smart-playlist"
+version = "0.1.0"
+description = "Mood-based smart playlists for a local music library, built on CLAP audio embeddings."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "transformers",
+    "torch>=2.6",
+    "torchaudio",
+    "soundfile>=0.13",
+    "soxr",
+    "numpy",
+    "sqlite-vec>=0.1.6",
+    "typed-argparse>=0.3.1",
+    "rich",
+    "httpx",
+]
+
+[project.scripts]
+sp = "local_smart_playlist.main:main"
+
+[dependency-groups]
+dev = [
+    "pyrefly",
+    "ruff",
+    "pytest",
+]
+
+[build-system]
+requires = ["uv_build>=0.9,<1"]
+build-backend = "uv_build"
+
+[tool.uv]
+# Reproducible resolution: ignore packages published in the last 7 days.
+exclude-newer = "2026-09-09T00:00:00Z"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle
+  "W505", # Docstring line too long
+  "F",    # Pyflakes
+  "UP",   # pyupgrade
+  "B",    # flake8-bugbear
+  "SIM",  # flake8-simplify
+  "I",    # isort
+  "ISC",  # implicit string concat
+  "PT",   # pytest
+  "RET",  # return
+  "ERA",  # remove commented code
+  "PGH",  # use specific error code for lint ignores
+  "PL",   # pylint
+  "PERF",
+  "FURB",
+  "TRY",
+  "A005",
+  "PLR0917", # Max pos arguments
+]
+ignore = [
+  "E501",   # Line too long
+  "ISC001",
+  "PLR091", # Uncle Bob's BS
+  "PTH123", # open should be replaced by Path.open
+  "TRY003", # Avoid specifying long messages outside the exception class
+]
+
+[tool.ruff.lint.pylint]
+max-positional-args = 2
+
+[tool.ruff.lint.per-file-ignores]
+# Heavy deps (torch/transformers/httpx) are imported lazily by design.
+"src/local_smart_playlist/embed/*" = ["PLC0415"]
+"src/local_smart_playlist/audio/decode.py" = ["PLC0415"]
+"src/local_smart_playlist/query/prompts.py" = ["PLC0415"]
+# Tests are allowed magic numbers, late imports, inline exception asserts.
+"tests/*" = ["PLC0415", "PLR2004", "PLR0917", "PT017", "TRY301"]
+
+[tool.pyrefly]
+use-ignore-files = false
+output-format = "min-text"
+min-severity = "warn"
+preset = 'strict'
+
+[tool.pyrefly.errors]
+unannotated-return = true
+invalid-abstract-method = true
+unused-call-result = true
+empty-body = true
+missing-super-call = true
+unsupported-dynamic-base = true
+implicit-reexport = true
+unknown-argument-type = true
+unknown-attribute-type = true
+implicit-any-lambda = true
+untyped-function-decorator = true
+untyped-class-decorator = true
+unused-type-ignore = true
+no-any-return = true
+untyped-import = true
+open-unpacking = true
+not-required-key-access = true
+implicitly-defined-attribute = true
+implicit-any = true
+implicit-bool = true
+invalid-cast = true
+
+[tool.pytest.ini_options]
+markers = [
+    "model: tests that download/load the real CLAP model (deselected in CI)",
+]
+addopts = "-m 'not model'"

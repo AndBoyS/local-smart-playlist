@@ -6,13 +6,11 @@ Guidelines for coding agents working in this repo.
 
 - Python 3.13, managed with uv. Run everything through `uv run ...`, never
   bare `python`/`pip`.
-- `uv sync` first; `[tool.uv] exclude-newer` pins resolution to a 7-day-old
-  cutoff for reproducibility. Bump it deliberately.
-- Lint: `uv run ruff check .` — line length 120, config in `pyproject.toml`.
+- Lint: `uv run ruff check .`, config in `pyproject.toml`.
 - Types: `uv run pyrefly check` — strict preset, do not weaken it; annotate
-  everything, prefer `X | None` and explicit return types.
+  everything.
 - Tests: `uv run pytest` (model tests deselected by default; `uv run pytest
-  -m model` runs the CLAP sanity suite locally, requires network).
+-m model` runs the CLAP sanity suite locally, requires network).
 
 ## Conventions
 

@@ -1,0 +1,43 @@
+{
+  "basic_info": {
+    "name": "MuQ (SSL music foundation model) and MuQ-MuLan (music-text joint embedding model). Variants: MuQ-m4a (Music4all pre-trained), MuQ (160K-hour in-house), MuQ_iter (iterative refinement); MuQ-MuLan-large on HF.",
+    "org": "Tencent AI Lab, with X-LANCE Lab (Shanghai Jiao Tong University) and Nanjing University. Authors: Haina Zhu, Yizhi Zhou, Hangting Chen, Jianwei Yu, Ziyang Ma, Rongzhi Gu, Yi Luo, Wei Tan, Xie Chen.",
+    "release_date": "arXiv 2501.01108 posted 2025-01-02 (v2 2025-01-03); HF checkpoints (OpenMuQ) released with the repo in early 2025.",
+    "links": {
+      "paper": "https://arxiv.org/abs/2501.01108",
+      "code": "https://github.com/tencent-ailab/MuQ",
+      "huggingface": [
+        "OpenMuQ/MuQ-MuLan-large",
+        "OpenMuQ/MuQ-large-msd-iter"
+      ]
+    }
+  },
+  "architecture": {
+    "backbone": "MuQ: 12-layer Conformer (~310M params) over 128-band Mel spectrograms pooled to 25 Hz; SSL target tokens come from Mel-RVQ (8 codebooks x 1024, single-linear-layer encoder/decoder, trained on music). MuQ-MuLan: two-tower music-text model = frozen-init MuQ music encoder (temporal mean-pool + linear projection) + XLM-RoBERTa-base text encoder plus 8 extra Transformer layers; total ~630M params (repo rounds to ~700M).",
+    "input_modality": "MuQ: audio only. MuQ-MuLan: audio + text (descriptions of genre, mood, instrument, tempo, keywords).",
+    "training_objective": "MuQ: masked language modeling (mask probability 0.6) predicting Mel-RVQ tokens per codebook via per-codebook linear heads with cross-entropy; iterative refinement re-derives Mel-RVQ_iter from the layer-10 latent of the first MuQ and retrains. MuQ-MuLan: decoupled contrastive loss (DCL) over (music, text) pairs, unfrozen encoders, 10 s audio crops, batch 768.",
+    "embedding_output": "MuQ-MuLan: 512-d shared music/text embedding space (d=512), global (temporal mean-pooled), single vector per clip; L2-normalized cosine/dot-product retrieval. MuQ (SSL model) itself outputs 1024-d frame-level hidden states (24 layers) for linear probing / downstream aggregation."
+  },
+  "data": {
+    "training_data": "SSL: Music4all (0.9K h, open access) for MuQ-m4a; ~160K h in-house music for the scaled MuQ (iterative stage included; open HF checkpoint was instead trained on Million Song Dataset audio). Contrastive: ~130K h in-house (music, text) pairs with genre/mood/instrument/tempo/keyword descriptions, no personal info. Mel-RVQ trained on Music4all. Data licenses not disclosed; in-house portions not public."
+  },
+  "performance": {
+    "benchmarks": "Embedding-family MARBLE suite (linear probes, 9 tasks): MuQ_iter avg 77.0 vs MusicFM 75.4 and MERT-v1-330M 74.4; MuQ avg 76.7. Per-task highlights: GTZAN genre 85.6 acc, Giantsteps key 65.0 refined, VocalSet singer 76.1, vocal technique 96.2, MTT tagging ROC-AUC 91.4, Nsynth instrument 79.7 acc. Zero-shot tagging (MagnaTagATune, MusCALL prompt 'A <label> track'): MuQ-MuLan ROC-AUC 79.3 / PR-AUC 29.3 — SOTA at release. Not evaluated on MuChoMusic/MusicBench/Song Describer (LLM-family suites) or GTZAN zero-shot tagging in the paper.",
+    "vs_clap": "Same MagnaTagATune zero-shot protocol: MuQ-MuLan 79.3 ROC-AUC / 29.3 PR-AUC vs LAION-CLAP (larger_clap_music_and_speech) 73.9 / 25.0, Microsoft-CLAP 2023 75.9 / 28.9, closed MuLan 78.2 (from paper; MuLan used 370K h vs MuQ-MuLan 130K h). Ablations with identical contrastive setups: MERT-MuLan 75.5 / 24.6, MusicFM-MuLan 76.2 / 27.1 — MuQ init gives the gain, not the contrastive recipe."
+  },
+  "availability": {
+    "license": "Model weights CC-BY-NC 4.0 (non-commercial; production use blocked without separate licensing). Repo code MIT. Requires torch/transformers (fairseq-style Conformer) — not pure-numpy."
+  },
+  "fit_for_local_playlist": {
+    "sample_rate": "24 kHz strictly required (both MuQ and MuQ-MuLan); repo standard is 48 kHz mono so a resample step is needed. fp32 recommended to avoid NaNs.",
+    "inference_cost": "~630M params total (2.5-2.65 GB fp32). Paper used GPUs for training; inference on CPU is feasible but slow for a library-scale index [uncertain]; official examples assume CUDA.",
+    "full_track_context": "10 s crops during contrastive training (30 s during SSL pre-training); no native long-context — full tracks need windowed inference plus aggregation (mean/p90 + re-normalization).",
+    "frame_level_support": "MuQ SSL backbone gives 25 Hz frame-level hidden states usable for section-level logic; MuQ-MuLan output is global-only (mean-pooled).",
+    "multilingual_queries": "English and Chinese text queries (XLM-R text tower).",
+    "retrieval_steering": "Standard joint-embedding retrieval only; no built-in attribute control. Follow-up Sparse Steerable Retrieval (ISMIR 2026) builds SAE concept sliders on MuQ-MuLan embeddings, which is the steering path."
+  },
+  "uncertain": [
+    "MuQ-MuLan CPU inference latency",
+    "Exact data license of the 160K h in-house SSL set and 130K h contrastive set (not disclosed)"
+  ]
+}

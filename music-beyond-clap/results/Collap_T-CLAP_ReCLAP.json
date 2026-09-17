@@ -1,0 +1,43 @@
+{
+  "basic_info": {
+    "name": "Collap / T-CLAP / ReCLAP (CoLLAP: Contrastive Long-form Language-Audio Pretraining; T-CLAP: Temporal-Enhanced CLAP; ReCLAP: CLAP with rewritten captions for zero-shot audio classification)",
+    "org": "CoLLAP: Junda Wu, Warren Li, Zachary Novack, Amit Namburi, Carol Chen, Julian McAuley (UC San Diego) — ICASSP 2025. T-CLAP: Yi Yuan, Zhuo Chen, Xubo Liu, Haohe Liu, Xuenan Xu, Dongya Jia et al. (University of Surrey / collaborators) — MLSP 2024. ReCLAP: Sreyan Ghosh, Sonal Kumar, Chandra Kiran Reddy Evuru, Oriol Nieto, Ramani Duraiswami, Dinesh Manocha (UC San Diego, Adobe) — ICASSP 2025.",
+    "release_date": "CoLLAP: arXiv 2410.02271 (Oct 2024), ICASSP March 2025. T-CLAP: arXiv 2404.17806 (Apr 2024), MLSP Sep 2024. ReCLAP: arXiv 2409.09213 (Sep 2024), ICASSP March 2025.",
+    "links": "CoLLAP: https://arxiv.org/abs/2410.02271, IEEE 10.1109/ICASSP49660.2025.10888307. T-CLAP: https://arxiv.org/abs/2404.17806, MLSP 10.1109/MLSP58920.2024.10734763; code 'released soon' stated in paper. ReCLAP: https://arxiv.org/abs/2409.09213, code+checkpoints https://github.com/Sreyan88/ReCLAP, ICASSP 10.1109/ICASSP49660.2025.10888123."
+  },
+  "architecture": {
+    "backbone": "CoLLAP: dual-feature audio extractor (BEATs + Whisper-style per the architecture figure) segmented into clips with 3D/kernel-wise + temporal attention pooling; text encoders RoBERTa-base or GPT-2. T-CLAP: fine-tuned CLAP (LAION/HTSAT-based CLAP family) with a temporal-focused contrastive loss. ReCLAP: CLAP (HTSAT audio encoder + text tower) fine-tuned with rewritten captions; inference uses LLM-generated prompt augmentation.",
+    "input_modality": "CoLLAP: audio + English long-form text (250+ word dense captions). T-CLAP: audio + English text (event-order/temporal-contrastive captions). ReCLAP: audio + English text. All three English-centric contrastive audio-text models.",
+    "training_objective": "All three are contrastive (CLAP-family), differing in augmentation/structure: CoLLAP — contrastive alignment of <=5-min audio with long dense temporally-structured captions (FUTGA Music-LLM generated), using kernel-wise and temporal attention weighted similarity (3D attention pooling); two variants with RoBERTa and GPT-2 text towers. T-CLAP — LLM-generated temporal-negative captions plus label/audio mix-up to create out-of-order samples, then a temporal-focused contrastive loss fine-tunes a pretrained CLAP. ReCLAP — standard CLAP contrastive loss with LLM-rewritten captions (K rewrites, chosen with p=0.4 original), improving sound-descriptive understanding.",
+    "embedding_output": "CLAP-family joint audio-text embedding spaces: typically 512-d embeddings with global representation for retrieval; CoLLAP additionally produces temporally weighted clip-level 3D embedding tensors aggregated by attention pooling. Exact dims not centrally documented; LAION-CLAP lineage suggests 512 [uncertain]."
+  },
+  "data": {
+    "training_data": "CoLLAP: 51.3K full-length AudioSet training-subset tracks (2–5 min filter), 4,109 hours, avg audio 288s, paired with Music-LLM (FUTGA) dense captions avg 257 words. T-CLAP: ~2M audio-text pairs from large-scale audio-text datasets (AudioCaps, Clotho, ESC-50 mix-ups etc.) with LLM temporal-negative captions. ReCLAP: 2.3M audio-caption pairs (660k-pair variant ablated), with LLM caption rewrites. All built on AudioSet-derived audio (license constraints follow AudioSet terms) [uncertain on exact per-dataset licenses]."
+  },
+  "performance": {
+    "benchmarks": "CoLLAP (long-form retrieval suite): beats Larger CLAP, HSTAT, Cacophony on SongDescriber, MusicCaps, AudioSet-Eval, HarmonixSet, Wiki-music. T-CLAP: SOTA on new T-Classify temporal-retrieval task (>87% T2A vs ~50% chance for baselines), plus AudioCaps/Clotho retrieval, zero-shot classification on ESC-50/UrbanSound8K/VGGSound, and AudioLDM generation conditioning MOS. ReCLAP: SOTA on multi-modal audio-text retrieval and zero-shot audio classification (ESC-50 92.8, UrbanSound8K 95.2, VGGSound 29.2, FSD50K 40.2, TUT, AudioSet, NSynth with prompt augmentation). None evaluated on MuChoMusic/MusicBench.",
+    "vs_clap": "All three directly improve over CLAP baselines on their respective tasks: CoLLAP > Larger CLAP and Cacophony on long-form retrieval (largest gains SongDescriber/HarmonixSet); T-CLAP jumps T-Classify from ~50% (chance) to 87%+ and outperforms LAION-CLAP/CLAP-Microsoft on zero-shot VGGSound by a wide gap; ReCLAP ZSAC gains 1–18% over its own CLAP-2M ablation and 1–55% over older baselines with prompt augmentation. No universal single-delta number [uncertain]."
+  },
+  "availability": {
+    "license": "ReCLAP: code and checkpoints public at github.com/Sreyan88/ReCLAP (repo code license per GitHub, described as official implementation; specific license badge not verified) [uncertain]. CoLLAP: code/checkpoints availability not confirmed in reviewed sources [uncertain]. T-CLAP: paper says 'code and models will be released soon' — release not verified [uncertain]. Training audio derived from AudioSet imposes research-use constraints."
+  },
+  "fit_for_local_playlist": {
+    "sample_rate": "Not documented per-model in reviewed sources [uncertain]. CLAP-lineage encoders commonly use 16k (HTSAT 16k) or 48k (LAION CLAP audio 48k); CoLLAP BEATs+Whisper backbone suggests 16k. Repo 48k mono would need resampling for 16k variants.",
+    "inference_cost": "All are CLAP-scale models (dual towers, ~100–200M params class) [uncertain]; CPU inference practical for indexing; no published per-track latency. T-CLAP adds zero inference cost over base CLAP (fine-tune only). ReCLAP adds one text-encoder pass per rewritten prompt.",
+    "full_track_context": "CoLLAP: explicit long-context design — up to 5-minute audio input, clip segmentation + temporal attention, best fit for whole-track indexing. T-CLAP: standard short-clip CLAP (10s-class inputs). ReCLAP: standard CLAP clip length (10s HTSAT) [uncertain].",
+    "frame_level_support": "CoLLAP is the closest: clip-level embeddings + temporal attention weights, but it is a retrieval alignment model, not a section-logic embedding API; T-CLAP/ReCLAP provide global clip embeddings only [uncertain on exposing internals].",
+    "multilingual_queries": "English only for all three (RoBERTa/GPT-2/T5-less English towers); no multilingual coverage (unlike CLaMP 3 / GLAP / MuQ-MuLan zh-en).",
+    "retrieval_steering": "Limited. T-CLAP gives temporal-order query control (relative to other CLAPs); CoLLAP gives fine-grained temporal-structure caption matching; ReCLAP offers descriptive prompt engineering for classification-style queries. None provide true attribute amplification/suppression steering (that is GD-Retriever/Sparse-Steerable territory)."
+  },
+  "uncertain": [
+    "embedding_output — exact embedding dimensions not centrally documented (512 inferred from CLAP lineage)",
+    "training_data — exact dataset licenses not verified",
+    "vs_clap — single summary delta not available; ranges reported per task",
+    "availability — CoLLAP code/checkpoint availability unconfirmed; T-CLAP code/model release unconfirmed; ReCLAP repo license not verified",
+    "sample_rate — per-model sample rates not documented in reviewed sources",
+    "inference_cost — parameter counts approximate; no official per-track latency numbers",
+    "full_track_context — T-CLAP/ReCLAP input clip lengths (10s-class) inferred from CLAP/HTSAT lineage, not stated explicitly",
+    "frame_level_support — internals exposure unclear",
+    "org — T-CLAP institutional affiliation of all co-authors not fully verified (Surrey-based, Xubo Liu/Haohe Liu AudioLDM group)"
+  ]
+}

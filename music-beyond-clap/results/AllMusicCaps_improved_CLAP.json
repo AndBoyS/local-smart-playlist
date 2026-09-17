@@ -1,0 +1,40 @@
+{
+  "basic_info": {
+    "name": "AllMusicCaps (companion model often read as 'am-CLAP' / MTG-improved CLAP) — improved Music CLAP model trained with AllMusicCaps album-review captions + SigReg regularization",
+    "org": "Pablo Alonso-Jiménez, Xavier Lizarraga-Seijas, Xavier Serra, Dmitry Bogdanov — Music Technology Group (MTG), Universitat Pompeu Fabra, Barcelona",
+    "release_date": "arXiv 2608.25244 (26 Aug 2026); accepted ISMIR 2026",
+    "links": "paper: https://arxiv.org/abs/2608.25244 ; code: https://github.com/MTG/allmusiccaps ; pip package: https://pypi.org/project/amclap/ ; caption dataset: https://huggingface.co/datasets/mtg-upf/allmusiccaps ; model checkpoints (12 variants): https://huggingface.co/mtg-upf/allmusiccaps_baseline ... allmusiccaps_te_trained_sigreg (best)"
+  },
+  "architecture": {
+    "backbone": "Music CLAP with OMAR-RQ audio encoder + all-mpnet-base-v2 sentence-transformer text encoder (frozen at baseline; also trained-text-encoder variants separated); SigReg regularization (isotropic-Gaussian embedding objective, in spirit of LeJEPA) applied to embedding space",
+    "input_modality": "audio (music) + English text captions",
+    "training_objective": "InfoNCE contrastive (baseline recipe) with complementary human-written supervision; ablations include sigmoid loss, LeJEPA-style cosine objective, InfoNCE+SigReg, and trained vs frozen text encoder. Best overall model: te_trained_sigreg (InfoNCE + SigReg + trained text encoder); most parseable frozen-TE recipe: all_layers (contrastive across all encoder layers). SigReg improves MLP probing and text-to-music retrieval",
+    "embedding_output": "Global CLAP-style embedding (single vector per clip); embedding dimension equal to all-mpnet-base-v2 output, 768-d [uncertain — not explicitly verified]; no frame-level embeddings [uncertain]"
+  },
+  "data": {
+    "training_data": "AllMusicCaps caption dataset: 540,454 rows pairing YouTube tracks with captions derived from professional AllMusic album reviews (paper abstract states caption corpus of 24,5346 [sic, likely 245,346] LLM-processed samples; HF dataset card says 540,454 rows incl. two caption styles: review 'quotes' and LLM-filled 'structured' attributes). LLM pipeline extracts descriptive musical quotes from noisy expert reviews and rewrites them into training-ready captions; v0 (repro) and v1 (normalized) releases; captions only, no audio. Combined with a baseline tag-derived caption dataset (baseline_quotes: baseline + review captions). Data released publicly; audio not redistributed"
+  },
+  "performance": {
+    "benchmarks": "Embedding-family, music-language: text-to-music retrieval on Song Describer (human-written captions) — largest gains from album-review supervision, particularly on complex queries other caption datasets leave uncovered [exact R@K numbers not extracted from paper yet — uncertain]; zero-shot classification; MLP probing across classification tasks (SigReg improves probing); outperforms open CLAP-style baselines on text-to-music retrieval, zero-shot classification, and most MLP probing tasks",
+    "vs_clap": "Outperforms open CLAP baselines across text-to-music retrieval, zero-shot classification and most MLP probing tasks; specific deltas vs LAION-CLAP / MusicCapsCLAP not extracted [uncertain]"
+  },
+  "availability": {
+    "license": "Caption dataset on HF (mtg-upf/allmusiccaps; transcription-derived YouTube audio not redistributed); 12 model checkpoints public incl. best te_trained_sigreg; pip install amclap gives CPU inference; code/data license terms not fully extracted [uncertain — MAEC-style releases at MTG are typically CC-BY for data]"
+  },
+  "fit_for_local_playlist": {
+    "sample_rate": "OMAR-RQ audio encoder sample rate not stated in extracted material; MTG CLAP-family models typically 16 kHz [uncertain] — resampling from repo-standard 48 kHz required",
+    "inference_cost": "CPU inference explicitly supported (pip amclap, get_model(device='cpu')); compact CLAP-family stack (small text encoder + OMAR-RQ audio encoder), per-track latency not published [uncertain]; SigReg training extra needs LeJEPA from git but inference needs nothing extra",
+    "full_track_context": "CLAP-style fixed-clip encoding; OMAR-style encoders are typically windowed [uncertain]; no long-context support stated",
+    "frame_level_support": "No — global clip-level alignment only; frame-level supervision not part of the recipe",
+    "multilingual_queries": "English only (all-mpnet-base-v2, English lyrics metadata)",
+    "retrieval_steering": "No attribute-conditioned steering; album-review captions give rich taste/scene phrasing (evaluative adjectives, narrative scene framing) which improves natural-language query diversity coverage — plain cosine retrieval only"
+  },
+  "uncertain": [
+    "Song Describer exact R@K numbers (abstract claims gains, table not extracted)",
+    "Embedding dimension (assumed 768 from all-mpnet-base-v2)",
+    "OMAR-RQ encoder input sample rate",
+    "Exact caption-corpus count ambiguity: 245,346 (abstract typo '24,5346') vs 540,454 dataset rows",
+    "Code preorder license",
+    "SigReg frame-level support absent — global-only assumed"
+  ]
+}

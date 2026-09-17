@@ -1,0 +1,41 @@
+{
+  "basic_info": {
+    "name": "GLAP (General/Language Audio Pretraining; repo title 'Generalized Language Audio Pretraining')",
+    "org": "Xiaomi (Xiaomi AI / Xiaomi Research; authors Heinrich Dinkel, Zhiyong Yan, Tianzi Wang, Yongqing Wang, Xingwei Sun, Yadong Niu, Jizhong Liu, Gang Li, Junbo Zhang, Jian Luan; XiaoMi AI Lab)",
+    "release_date": "arXiv v1 12 Jun 2025, v2 19 Jan 2026; accepted ICASSP 2026; checkpoints on HuggingFace (mispeech/GLAP)",
+    "links": "paper: https://arxiv.org/abs/2506.11350 ; code: https://github.com/xiaomi-research/dasheng-glap ; HF: https://huggingface.co/mispeech/GLAP ; pip package: glap_model (PyPI)"
+  },
+  "architecture": {
+    "backbone": "Audio encoder: Dasheng (EAT-style ViT audio classifier family, trained with sigmoid loss config 'multilingual_dasheng_asr_sound2_sigmoidloss_balanced') [uncertain which Dasheng size per checkpoint]; text encoder for multilingual captions, eg. translated via SONAR across languages [uncertain text-encoder identity]; uses CLIP-style dual encoders",
+    "input_modality": "audio (speech, music, sound) + multilingual text",
+    "training_objective": "Contrastive CLIP-style pretraining with sigmoid (SigLIP-type) loss, balanced multi-domain (speech/AudioSet + music + sound) objectives; single-stage training",
+    "embedding_output": "Global audio/text embeddings for retrieval (dim not verified [uncertain], likely 768 or Dasheng encoder dim [uncertain]); encode_text / encode_audio APIs; Dasheng encoders expose dense patch features, enabling frame-level extraction [uncertain]"
+  },
+  "data": {
+    "training_data": "Multi-source mix: AudioSet (sound), speech datasets with transcripts (ASR domain), music caption sets (e.g., music/text pairs), WavCaps sound subsets, gathered/drawn datasets; multilingual extension via SONAR translation of captions into seven target languages; tens of thousands to millions of pairs [uncertain]; data licenses follow source sets [uncertain]"
+  },
+  "performance": {
+    "benchmarks": "Clotho and AudioCaps audio-text retrieval (competitive), sound-event and speech retrieval (SOTA-level claims), keyword spotting across 50 languages, multilingual sound/music understanding across four languages (English, German, Spanish, Chinese) [uncertain numeric entries]",
+    "vs_clap": "Music and sound (English) retrieval matches prior music-specific and general CLAP baselines while adding multilingual coverage; beats prior generic CLAP on speech retrieval and speech-content tasks"
+  },
+  "availability": {
+    "license": "Apache-2.0 (code and HF model card)"
+  },
+  "fit_for_local_playlist": {
+    "sample_rate": "16 kHz (examples built on 160000/64000-sample inputs); requires resampling from repo-standard 48k mono",
+    "inference_cost": "Dasheng ViT-base-class audio encoder (~88M [uncertain]) plus text encoder; supports single-GPU and CPU inference [uncertain]; transformers AutoModel trust_remote_code loading; lightweight pip install",
+    "full_track_context": "Fixed ~10 s window at 16 kHz default (1, ~160000 samples in examples), no native long-track support; windowed indexing required",
+    "frame_level_support": "Dasheng backbone yields patch/dense features, frame-level extraction plausible [uncertain], no dedicated frame-embedding API documented",
+    "multilingual_queries": "8+ languages (English, Japanese, German, Spanish, Chinese, Dutch, and more)",
+    "retrieval_steering": "Task-specific prompt templates (Speech '{label}', Music 'The music in the style of {label}.', Sound 'The sound of {label} can be heard.') — prompt-steered, no explicit attribute-control module"
+  },
+  "uncertain": [
+    "exact Dasheng audio-encoder size per checkpoint",
+    "text-encoder identity (architecture/name)",
+    "embedding dimension",
+    "exact Clotho/AudioCaps/music benchmark numbers",
+    "exact size of multilingual training data",
+    "frame-level embedding API availability",
+    "CPU inference latency"
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "basic_info": {
+    "name": "MuChoMusic (benchmark) and MusicBench (benchmark). Note: a different, earlier MusicBench is an audio-text pair dataset from the Mustango/GaMMA line (amaai-lab/MusicBench); the GaMMA paper (2026) introduces a new human-curated MusicBench multiple-choice benchmark.",
+    "org": "MuChoMusic: Benno Weck, Ilaria Manco (equal contribution), Emmanouil Benetos, Elio Quinton, George Fazekas, Dmitry Bogdanov — Universitat Pompeu Fabra, Queen Mary University of London, Universal Music Group; ISMIR 2024. GaMMA MusicBench: Zuyao You, Zhesong Yu, Mingyu Liu, Bilei Zhu, Yuan Wan, Zuxuan Wu — Fudan University + ByteDance, arXiv 2605.00371 (2026).",
+    "release_date": "MuChoMusic: arXiv 2408.01337 (2024-07), ISMIR 2024 (San Francisco), Zenodo dataset 2024-07-26. GaMMA MusicBench: arXiv 2605.00371 (2026-05). (Earlier MusicBench dataset: arXiv 2311.08355, Nov 2023, Mustango.)",
+    "links": {
+      "paper": "https://arxiv.org/abs/2408.01337 (MuChoMusic); https://arxiv.org/abs/2605.00371 (GaMMA MusicBench)",
+      "code": "https://github.com/mulab-mir/muchomusic; https://github.com/geshang777/GaMMA",
+      "huggingface": [
+        "mulab-mir/muchomusic (dataset)",
+        "amaai-lab/MusicBench (2023 audio-text dataset)"
+      ]
+    }
+  },
+  "architecture": {
+    "backbone": "Not a model — benchmarks. MuChoMusic: 1,187 human-validated 4-way multiple-choice questions over 644 tracks (MusicCaps + Song Describer Dataset), generated with Gemini 1.0 Pro from human captions, taxonomy of knowledge and reasoning dimensions; evaluated via accuracy and instruction-following rate on Audio LLMs (Qwen-Audio, SALMONN, MuLLaMA, MusiLingo, M2UGen). GaMMA MusicBench: 3,739 human-curated MCQs split into MusicBench-Global (2,741) and MusicBench-Temporal (998, time-segment reasoning). 2023 MusicBench dataset: 52,768 train / 400 test audio-caption pairs derived from MusicCaps with control sentences (tempo/chord/key/etc.) for text-to-music generation eval.",
+    "input_modality": "audio + text (questions/captions). Targets multimodal audio-language models (LLM family), not embedding models.",
+    "training_objective": "N/A — evaluation-only artifacts; no training.",
+    "embedding_output": "N/A — no embeddings; output is MCQ accuracy (and IFR for MuChoMusic)."
+  },
+  "data": {
+    "training_data": "MuChoMusic: 644 tracks (497 MusicCaps 10 s genre-balanced test split, 227 SDD 2 min clips); all questions human-annotator-validated; CC-licensed distribution via Zenodo. GaMMA MusicBench: 3,739 human-curated MCQs over ~60K annotated tracks incl. MIDI-synthesized Los Angeles MIDI Dataset. 2023 MusicBench dataset: MusicCaps-derived 52.8K pairs with ChatGPT-rephrased captions (CC-BY-NC 4.0 [uncertain])."
+  },
+  "performance": {
+    "benchmarks": "These are the benchmarks themselves. MuChoMusic reference results (2024): Qwen-Audio best at 51.4% accuracy; music-specific LLMs (MuLLaMA 32.4%, MusiLingo 21.1%) trailed general-audio models; all under 50-52%, with over-reliance on the language modality. GaMMA (2026) reports 79.1% on MuChoMusic and 81.3% MusicBench-Global / 79.3% MusicBench-Temporal, past Gemini-3.0 Pro (80.4% MusicBench-Global). Designed for audio-LLM (captioning/QA family) evaluation — not directly applicable to CLAP-style embedding models without adaptation.",
+    "vs_clap": "Not comparable directly: benchmarks target generative audio-LLMs, whereas CLAP/MuLan/MuQ-MuLan are embedding models evaluated on zero-shot tagging/retrieval. No CLAP baseline numbers exist on MuChoMusic or MusicBench in the original papers."
+  },
+  "availability": {
+    "license": "MuChoMusic: code on GitHub (repo license Apache-2.0 [uncertain]); data CC-BY-SA 4.0 via Zenodo (10.5281/zenodo.12709974) [uncertain on exact CC variant]. GaMMA MusicBench: code repo public; data terms not stated [uncertain]. Both are evaluation suites, so licensing mostly gates leaderboard participation, not production use."
+  },
+  "fit_for_local_playlist": {
+    "sample_rate": "N/A — datasets ship MP3 audio (MuChoMusic tracks at native source rates, e.g. 2 min MP3 from SDD); no fixed sample rate requirement.",
+    "inference_cost": "N/A — no model. Cost is whatever LLM you evaluate (7B+ class, GPU-bound; irrelevant to local numpy indexing pipeline).",
+    "full_track_context": "MuChoMusic uses 10 s (MusicCaps) and 2 min (SDD) clips; MusicBench-Temporal requires whole-track reasoning over full pieces — closer to full-track indexing needs but only meaningful for LLMs.",
+    "frame_level_support": "N/A — MCQ format gives no frame-level signal.",
+    "multilingual_queries": "English only (MuChoMusic); GaMMA MusicBench English [uncertain].",
+    "retrieval_steering": "N/A — no retrieval interface; useful only as an external sanity check that an embedding model's semantics transfer, requiring custom adaptation."
+  },
+  "uncertain": [
+    "MuChoMusic leaderboard numbers current as of 2026-09 (designated as fast-moving)",
+    "MuChoMusic exact code/data license variant (Apache-2.0 code, CC variant of Zenodo data)",
+    "2023 MusicBench dataset license (believed CC-BY-NC 4.0)",
+    "GaMMA MusicBench data release terms and query language coverage"
+  ]
+}

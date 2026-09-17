@@ -1,0 +1,40 @@
+{
+  "basic_info": {
+    "name": "FineLAP (Fine-grained Language-Audio Pretraining) — CLAP-family model jointly aligned at clip and frame level under heterogeneous supervision; companion dataset FineLAP-100k",
+    "org": "Authors: Xiquan Li, Xuenan Xu, Ziyang Ma, Wenxi Chen, Haolin He, Qiuqiang Kong, Xie Chen — affiliations not explicitly extracted from sources reviewed; likely University of Hong Kong + Shanghai Jiao Tong University-affiliated group [uncertain]",
+    "release_date": "arXiv 2604.01155 (April 2026); ACL 2026 Main",
+    "links": "Paper: https://arxiv.org/abs/2604.01155 ; code: https://github.com/xiquan-li/FineLAP ; model checkpoints: https://huggingface.co/AndreasXi/FineLAP (transformers AutoModel) and https://huggingface.co/AndreasXi/FineLAP_Pytorch ; dataset: https://huggingface.co/datasets/AndreasXi/FineLAP-100k"
+  },
+  "architecture": {
+    "backbone": "CLAP-style pipeline: self-supervised audio encoder whose representation (via a decoupled audio adapter) yields both global clip embeddings and dense frame-level audio representations in one shared space; text encoder identity not extracted from the paper's abstract [uncertain]",
+    "input_modality": "audio + text (clip-level captions and temporally aligned phrases)",
+    "training_objective": "Stage 1: contrastive pretraining and frame-level alignment supported by heterogeneous supervision with dual-stream sigmoid loss (SIGLIP-style) jointly learning from clip-level audio-caption pairs and limited frame-level annotations; frame-level objective uses a cluster-based negative phrase sampling strategy (particular to the training set and paper's technical formulation); ablations show coarse and fine-grained alignment are mutually beneficial",
+    "embedding_output": "Global clip-level embeddings (B, d) plus dense frame-level audio embeddings (B, T, d) for open-vocabulary SED tasks and text-audio grounding; embedding dim not extracted [uncertain]; L2-normalized cosine similarity"
+  },
+  "data": {
+    "training_data": "Heterogeneous phase-level supervision: clip-level audio-caption pairs + temporally aligned frame-level annotations. Companion dataset FineLAP-100k: 100K synthetic SED annotations generated via a scalable simulation pipeline (phrase ontology seeded from AudioSet-Strong plus manually seeded cluster phrase labels per Stage-2 phrases: clustering space of 494 clusters / 600+ phrases, Sentence-BERT-clustered per paper; exact digitization pipeline public)"
+  },
+  "performance": {
+    "benchmarks": "Audio-text retrieval on AudioCaps (R@1, avg pu.75s) and Clotho (R@1); open-vocabulary and closed-vocabulary sound event detection (PSDS1 metric) on DESED, AudioSet-Strong, UrbanSED, TAG; text-to-audio grounding on AudioGrounding; zero-shot classification on ESC50/UrbanSound8K/VGGSound (accuracy); not evaluated on music-specific retrieval (Song Describer, MusicBench)",
+    "vs_clap": "Outperforms CLAP and frame-level (FLAM) baselines on all evaluation sets of most tasks: reach best-in-Table 2 and Table 3 numbers across retrieval, classification, SED, grounding; music CLAP comparisons not made"
+  },
+  "availability": {
+    "license": "Checkpoints public on HF (two formats incl. PyTorch, editable weight parametrization); repo license not extracted from src/README [uncertain]; FineLAP-100k dataset public on HF [uncertain license]"
+  },
+  "fit_for_local_playlist": {
+    "sample_rate": "Not stated in extracted material; standard general-audio CLAP convention is 16 kHz [uncertain]; resampling from repo-standard 48 kHz required",
+    "inference_cost": "CLAP-scale model (~hundreds of M params); per-track latency not published [uncertain]",
+    "full_track_context": "Trained and evaluated on fixed-length 10 s audio; variable-length audio considered in the hook/scheduled timeframe [uncertain]; full tracks need windowing",
+    "frame_level_support": "Yes — dense frame embeddings (B, T, d) and frame-to-phrase similarity scores (B, N, T) are first-class inference outputs, designed for open-vocabulary frame-level grounding",
+    "multilingual_queries": "English only [uncertain]",
+    "retrieval_steering": "Open-vocabulary phrase-level grounding allows steering by arbitrary sound/mood/scene phrases at the frame level (open-vocab SED, text-to-audio grounding); no separate steering module"
+  },
+  "uncertain": [
+    "Text encoder / audio SSL backbone identity",
+    "Author affiliations",
+    "Embedding dimension",
+    "Input sample rate",
+    "Code and dataset licenses",
+    "Paper is general-audio, not music-specific"
+  ]
+}

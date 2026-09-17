@@ -1,0 +1,40 @@
+{
+  "basic_info": {
+    "name": "Sparse Steerable Retrieval — Steering dense music retrieval with open-vocabulary concept discovery",
+    "org": "Julien Guinot, Alain Riou, Elio Quinton, György Fazekas (Queen Mary University of London, Centre for Digital Music, with industry collaboration)",
+    "release_date": "arXiv 2608.08757, published 9 August 2026; accepted to ISMIR 2026 (27th ISMIR conference).",
+    "links": "Paper: https://arxiv.org/abs/2608.08757; Code (public): https://github.com/Pliploop/sparse-steer-retrieval/; companion website with live demo over the Music4All corpus per README"
+  },
+  "architecture": {
+    "backbone": "Sparse Autoencoder (BatchTopK SAE, dict_size 4096, expansion factor 8, tied linear decoder) trained on frozen MuQ-MuLan audio embeddings (512-d); CLAP audio/text towers also supported. Concept attribution solved as sparse inversion (Adam differentiable solver or FISTA fast linear inverse, ~20 ms/CPU for live demo) under a Mahalanobis manifold prior fit on Music4All; IDF weighting suppresses hub neurons.",
+    "input_modality": "audio embeddings (pre-extracted MuQ-MuLan 512-d per clip) + free-form text concepts (English) as steering control signal.",
+    "training_objective": "SAE pretraining on audio embeddings (audio-only, data_mixing_ratio=0.0) with sparsity sweep L0 ∈ {5,10,20,50,100}, 50k steps AdamW lr=1e-4 on one L40 GPU; steering itself is training-free — sparse inversion recovers a concept support whose decoded embedding reconstructs the concept text embedding while staying on the audio manifold.",
+    "embedding_output": "Operates on 512-d MuQ-MuLan global audio embeddings (one per clip); edited embeddings are re-decoded from sparse code, L2-normalized before nearest-neighbour search."
+  },
+  "data": {
+    "training_data": "SAE trained on MuQ-MuLan audio embeddings of Music4All (main model, audio-only, pre-extracted features); paper also experiments with JamendoMaxCaps-embedded clips (CLAP and MuQ audio towers, per-10s-frame embeddings). Per-clip audio license follows Music4All/JamendoMaxCaps terms [uncertain]."
+  },
+  "performance": {
+    "benchmarks": "Steerable music retrieval evaluation (not MuChoMusic/MusicBench/etc.): support faithfulness (bundle recall/hit-rate: inversion supports overlap real audio example supports far better than DTN cosine probing), probe informativeness (weak-probe AUROC ~50% with cosine probing → ~65–80% with inversion), and retrieval editing quality: at matched edit strength α and support size K ∈ {5,10,20}, inversion dominates the controllability–preservation Pareto frontier for both amplification and suppression, staying closer to the audio manifold in Mahalanobis distance. Music4All tags used as concepts for evaluation.",
+    "vs_clap": "No head-to-head vs LAION-CLAP/MuLan retrieval deltas; CLAP embeddings are supported as an alternative base encoder for the SAE, and baseline comparisons are between attribution methods (sparse inversion vs DTN cosine probing) on the same encoder. Direct CLAP delta not reported [uncertain]."
+  },
+  "availability": {
+    "license": "Code publicly available (official repo). SAE checkpoints mentioned as available on companion site; exact code/model license not stated in reviewed sources [uncertain]. Base MuQ-MuLan checkpoint is Apache-2.0 per MuQ repo (external)."
+  },
+  "fit_for_local_playlist": {
+    "sample_rate": "Depends on the base encoder: MuQ-MuLan strictly requires 24 kHz audio input (per MuQ repo); repo standard 48k mono needs resampling.",
+    "inference_cost": "Very cheap: SAE encode/decode + sparse inversion support recovery at slider-build time (FISTA ~20 ms/CPU); per-query steering is a sparse code edit + L2 normalize + NN search — fully CPU-viable. Reuses pre-extracted 512-d embeddings, so no audio re-encoding when steering.",
+    "full_track_context": "Inherits MuQ-MuLan's ingest: per-clip (10 s frame) embeddings aggregated to one 512-d vector per clip; no native multi-minute long context — full-track handling via the base MuQ-MuLan windowed/clip-level embeddings (README instructs one embedding per clip) [uncertain].",
+    "frame_level_support": "Sparse code exposes per-feature structure from per-frame embeddings, and steering edits the clip-level sparse vector; no explicit section-level playlist logic API documented [uncertain].",
+    "multilingual_queries": "Concepts come from MuQ-MuLan's text encoder, which supports English and Chinese; the steering method itself is text-encoder-agnostic (any concept embedding).",
+    "retrieval_steering": "Yes — the core contribution: open-vocabulary concept amplification and suppression via Slider API (slider.steer(z, alpha) / slider.suppress), training-free concept attribution (sparse inversion, no SAE retraining, no paired audio-text data), live demo over Music4All corpus. Direct implementation of 'more ambient / less distorted / without guitar' playlist steering."
+  },
+  "uncertain": [
+    "training_data — exact per-dataset licenses and Music4All vs JamendoMaxCaps split for final checkpoints",
+    "vs_clap — no direct LAION-CLAP/MuLan delta reported",
+    "availability — code repo / SAE checkpoint license not explicitly stated in README excerpts",
+    "full_track_context — exact frame aggregation used for one-embedding-per-clip manifests",
+    "frame_level_support — section-level API availability unclear",
+    "org — precise industry affiliation of industry co-authors (Guinot/Quinton) not fully confirmed"
+  ]
+}

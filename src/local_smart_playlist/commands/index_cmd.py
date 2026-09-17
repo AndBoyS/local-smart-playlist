@@ -64,7 +64,6 @@ class IndexArgs:
                             continue
                         window_vecs = embed_windows(windows)
                         mean_vec, p90_vec = aggregate(window_vecs)
-                        store.add_windows(rel_path=rel, window_vecs=window_vecs)
                         store.upsert(
                             rel_path=rel,
                             mean_vec=mean_vec,
@@ -75,6 +74,7 @@ class IndexArgs:
                             model=MODEL_ID,
                             indexed_at=now,
                         )
+                        store.add_windows(rel_path=rel, window_vecs=window_vecs)
                     except decode.DecodeError as exc:
                         store.record_failure(rel_path=rel, error=str(exc), now=now)
                     _ = bar.advance(task, 1)

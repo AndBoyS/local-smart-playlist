@@ -1,24 +1,39 @@
 """Mood word → LLM caption expansion (OpenAI-compatible endpoint)."""
 
-
 import os
 from collections.abc import Sequence
+from importlib import resources
 from typing import Any, cast
 
 DEFAULT_BASE_URL = "https://opencode.ai/zen/go/v1"  # OpenCode Go subscription
 DEFAULT_MODEL = "deepseek-v4-flash"
 
+
+def _load_vocab() -> str:
+    """The readout vocabulary — captions mined from CLAP's training distribution."""
+    return resources.files("local_smart_playlist.data").joinpath("caption_vocab.txt").read_text(encoding="utf-8")
+
+
 _SYSTEM_PROMPT = (
     "You expand a mood word or short mood phrase into candidate descriptions of "
-    "how music matching it could sound. Try to cover as many possible ways as "
-    "you can: every genre, era, instrumentation and energy level the phrase "
-    "could plausibly describe, plus paraphrases of the dominant reading. Do not "
-    "limit yourself to one interpretation. Aim for 15-20 lines, one description "
-    "per line, no numbering, no extra commentary. Each line is a vivid caption in "
-    "the style of a music tagger, describing tempo, instrumentation, vocals, mood "
-    'and production, e.g. "a slow melancholic song with soft vocals, sparse piano '
-    'and a minor key".'
+    "how music matching it could sound. Your output is fed to an audio-text "
+    "embedding model (CLAP), so every line should be a caption in the style of "
+    "the reference vocabulary below.\n\n"
+    "Reference vocabulary (captions in the model's own language):\n"
+    "---\n"
+    "{vocab}\n"
+    "---\n\n"
+    "For the given mood: first output the 8 lines from the reference vocabulary "
+    "that best match the mood, verbatim. Then write 8-12 NEW captions in the "
+    "same style (full sentences or label-bags, tempo + instrumentation + vocals "
+    "+ mood + production) covering as many readings as possible: every genre, "
+    "era, instrumentation and energy level the phrase could plausibly describe. "
+    "Aim for 18-20 lines total, one per line, no numbering, no commentary."
 )
+
+
+def _system_prompt() -> str:
+    return _SYSTEM_PROMPT.format(vocab=_load_vocab())
 
 MAX_PROMPTS = 20
 MIN_PROMPTS = 5
@@ -56,7 +71,7 @@ def expand_mood(mood: str) -> list[str]:
     body = {
         "model": model,
         "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": _system_prompt()},
             {"role": "user", "content": f"Mood: {mood}"},
         ],
         "temperature": 0.9,

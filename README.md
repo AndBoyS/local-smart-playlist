@@ -28,7 +28,8 @@ Index DB defaults to `$XDG_DATA_HOME/sp/index.db` (macOS:
 `~/Library/Application Support/sp/index.db`); override with `--db`.
 
 LLM caption expansion (`--llm`) uses any OpenAI-compatible endpoint, by
-default a local ollama:
+default OpenCode Go; the prompt is grounded in the readout vocabulary
+(captions mined from CLAP's training distribution, `local_smart_playlist/data/caption_vocab.txt`):
 
 ```
 SP_LLM_BASE_URL  # default https://opencode.ai/zen/go/v1 (OpenCode Go)

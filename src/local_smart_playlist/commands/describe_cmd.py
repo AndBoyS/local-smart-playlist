@@ -7,7 +7,7 @@ from rich import print as rprint
 from rich.table import Table
 
 from local_smart_playlist.config import default_db_path
-from local_smart_playlist.embed.model import cap_torch_threads, embed_texts
+from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_texts
 from local_smart_playlist.index.store import Store
 from local_smart_playlist.query import prompts
 
@@ -50,6 +50,7 @@ class DescribeArgs:
 
         with Store(db_path) as store:
             library_root = store.get_meta("library_root")
+            store.require_model(MODEL_ID)
             if library_root is None:
                 raise SystemExit("index has no library root recorded; re-run `sp index`")
             root = Path(library_root).expanduser()

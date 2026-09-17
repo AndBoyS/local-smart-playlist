@@ -1,6 +1,6 @@
 # local-smart-playlist
 
-Mood-based smart playlists for a local music library. CLAP audio embeddings →
+Mood-based smart playlists for a local music library. MuQ-MuLan audio embeddings →
 rank tracks by text queries like `melancholic`, `moody late night`.
 
 ```console
@@ -30,7 +30,7 @@ directory; override with `--db`.
 
 LLM caption expansion (`--llm`) uses any OpenAI-compatible endpoint, by
 default OpenCode Go; the prompt is grounded in the readout vocabulary
-(captions mined from CLAP's training distribution, `local_smart_playlist/data/caption_vocab.txt`):
+(captions in the embedding model's text-caption style, `local_smart_playlist/data/caption_vocab.txt`):
 
 ```
 SP_LLM_BASE_URL  # default https://opencode.ai/zen/go/v1 (OpenCode Go)
@@ -38,5 +38,5 @@ SP_LLM_API_KEY   # default: $OPENCODE_API_KEY
 SP_LLM_MODEL     # default deepseek-v4-flash
 ```
 
-Model test suite (CLAP download) is marked `model` and skipped by default:
+Model test suite (MuQ-MuLan download) is marked `model` and skipped by default:
 `uv run pytest -m model` to run locally.

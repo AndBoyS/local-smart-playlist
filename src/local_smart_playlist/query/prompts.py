@@ -10,7 +10,7 @@ DEFAULT_MODEL = "deepseek-v4-flash"
 
 
 def _load_vocab() -> str:
-    """The readout vocabulary — captions mined from CLAP's training distribution."""
+    """The readout vocabulary — captions in the embedding model's text-caption style."""
     return resources.files("local_smart_playlist.data").joinpath("caption_vocab.txt").read_text(encoding="utf-8")
 
 
@@ -22,16 +22,16 @@ def caption_vocab() -> list[str]:
 _SYSTEM_PROMPT = (
     "You expand a mood word or short mood phrase into candidate descriptions of "
     "how music matching it could sound. Your output is fed to an audio-text "
-    "embedding model (CLAP), so every line should be a caption in the style of "
+    "embedding model (MuQ-MuLan), so every line should be a caption in the style of "
     "the reference vocabulary below.\n\n"
-    "Reference vocabulary (captions in the model's own language):\n"
+    "Reference vocabulary (attribute captions in the model's own language, en and zh):\n"
     "---\n"
     "{vocab}\n"
     "---\n\n"
     "For the given mood: first output the 8 lines from the reference vocabulary "
-    "that best match the mood, verbatim. Then write 8-12 NEW captions in the "
-    "same style (full sentences or label-bags, tempo + instrumentation + vocals "
-    "+ mood + production) covering as many readings as possible: every genre, "
+    "that best match the mood, verbatim. Then write 8-12 NEW attribute captions "
+    "in the same style (comma-separated genre / mood / instrument / tempo / "
+    "vocals / keywords) covering as many readings as possible: every genre, "
     "era, instrumentation and energy level the phrase could plausibly describe. "
     "Aim for 18-20 lines total, one per line, no numbering, no commentary."
 )

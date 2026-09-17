@@ -15,7 +15,7 @@ KNN_LIMIT = 4096  # sqlite-vec KNN k cap
 
 
 class TextEmbedder(Protocol):
-    """Anything that turns text into a unit-norm CLAP vector."""
+    """Anything that turns text into a unit-norm model vector."""
 
     def __call__(self, texts: list[str]) -> np.ndarray: ...
 

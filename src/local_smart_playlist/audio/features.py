@@ -1,4 +1,4 @@
-"""Batch assembly for CLAP feature extraction."""
+"""Batch assembly for MuQ-MuLan feature extraction."""
 
 from __future__ import annotations
 

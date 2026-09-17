@@ -146,6 +146,13 @@ class Store:
         _ = self._conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", (key, value))
         self._conn.commit()
 
+    def require_model(self, model_id: str) -> None:
+        """Hard-fail when the index was built with a different embedding model."""
+        stored = self.get_meta("model")
+        if stored is not None and stored != model_id:
+            msg = f"index built with {stored}; requested {model_id} — re-run `sp index` to rebuild"
+            raise SystemExit(msg)
+
     def get_meta(self, key: str) -> str | None:
         row = self._conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
         if row is None:

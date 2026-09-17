@@ -1,11 +1,11 @@
 [project]
 name = "local-smart-playlist"
 version = "0.1.0"
-description = "Mood-based smart playlists for a local music library, built on CLAP audio embeddings."
+description = "Mood-based smart playlists for a local music library, built on MuQ-MuLan audio embeddings."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "transformers",
+    "transformers<5",
     "torch>=2.6",
     "torchaudio",
     "soundfile>=0.13",
@@ -15,7 +15,8 @@ dependencies = [
     "sqlite-vec>=0.1.6",
     "typed-argparse>=0.3.1",
     "rich",
-    "httpx",
+    "httpx[socks]",
+    "muq>=0.1.0",
 ]
 
 [project.scripts]
@@ -113,6 +114,6 @@ invalid-cast = true
 
 [tool.pytest.ini_options]
 markers = [
-    "model: tests that download/load the real CLAP model (deselected in CI)",
+    "model: tests that download/load the real MuQ-MuLan model (deselected in CI)",
 ]
 addopts = "-m 'not model'"

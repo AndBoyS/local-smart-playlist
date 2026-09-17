@@ -4,7 +4,7 @@
 from pathlib import Path
 
 from local_smart_playlist.config import default_db_path, default_playlist_dir
-from local_smart_playlist.embed.model import cap_torch_threads, embed_texts
+from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_texts
 from local_smart_playlist.index.store import Store
 from local_smart_playlist.query.playlist import playlist_path, write_playlist
 from local_smart_playlist.query.search import query_vector, rank_by_similarity, rank_hybrid
@@ -36,6 +36,7 @@ class PlayArgs:
         library_root: str | None = None
         with Store(db_path) as store:
             library_root = store.get_meta("library_root")
+            store.require_model(MODEL_ID)
             exclude: set[str] = set()
             if seed_track is not None:
                 seed = store.get_track(seed_track)

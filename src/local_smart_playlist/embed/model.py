@@ -1,31 +1,30 @@
-"""Lazy CLAP model loading and window embedding."""
-
+"""Lazy MuQ-MuLan model loading and window embedding."""
 
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
+import soxr
 
 from local_smart_playlist.audio.features import batches
 
 if TYPE_CHECKING:
-    from transformers import ClapModel, ClapProcessor
+    from muq import MuQMuLan  # pyrefly: ignore[implicit-reexport]
 
-MODEL_ID = "laion/clap-htsat-fused"
+MODEL_ID = "OpenMuQ/MuQ-MuLan-large"
 EMBED_DIM = 512
+MODEL_SR = 24_000  # MuQ-MuLan strictly requires 24 kHz input
 
 
 @lru_cache(maxsize=1)
-def load_model() -> "tuple[ClapModel, ClapProcessor]":
-    """Load CLAP model + processor once (downloads to the HF cache on first use)."""
-    from transformers import AutoProcessor, ClapModel
+def load_model() -> "MuQMuLan":
+    """Load MuQ-MuLan once (downloads the checkpoint from the HF cache on first use)."""
+    from muq import MuQMuLan  # pyrefly: ignore[implicit-reexport]
 
-    model = ClapModel.from_pretrained(MODEL_ID)
+    model = MuQMuLan.from_pretrained(MODEL_ID)
     _ = model.eval()
-    device = pick_device()
-    model = model.to(device)
-    processor = AutoProcessor.from_pretrained(MODEL_ID)
-    return model, processor
+    _ = model.to(pick_device())
+    return model
 
 
 def pick_device() -> str:
@@ -43,17 +42,9 @@ def _unit(vectors: np.ndarray) -> np.ndarray:
     return np.asarray(vectors / safe, dtype=np.float32)
 
 
-def _feature_tensor(output: object) -> Any:
-    """transformers 5.x get_*_features returns a model output; extract the 512-d tensor."""
-    import torch
-
-    if isinstance(output, torch.Tensor):
-        return output
-    pooled = cast("Any", output).pooler_output  # pyrefly: ignore
-    if not isinstance(pooled, torch.Tensor):
-        msg = f"unexpected get_*_features output type {type(output).__name__}"
-        raise TypeError(msg)
-    return pooled
+def _to_24k(windows: list[np.ndarray]) -> list[np.ndarray]:
+    """Resample 48 kHz windows to the model's 24 kHz input rate (one shot per window)."""
+    return [np.asarray(soxr.resample(w, 48_000, MODEL_SR), dtype=np.float32) for w in windows]
 
 
 def embed_windows(windows: list[np.ndarray], *, batch_size: int = 16) -> np.ndarray:
@@ -62,22 +53,19 @@ def embed_windows(windows: list[np.ndarray], *, batch_size: int = 16) -> np.ndar
         return np.empty((0, EMBED_DIM), dtype=np.float32)
     import torch
 
-    model, processor = load_model()
+    model = load_model()
     device = pick_device()
     out = np.empty((len(windows), EMBED_DIM), dtype=np.float32)
     with torch.no_grad():
         for i, batch in enumerate(batches(windows, batch_size=batch_size)):
-            inputs = processor(
-                audio=batch,
-                sampling_rate=48_000,  # pyrefly: ignore
-                return_tensors="pt",  # pyrefly: ignore
-                padding="max_length",  # pyrefly: ignore
-            )
-            inputs = {k: v.to(device) for k, v in cast("Any", inputs).items()}
-            features = model.get_audio_features(**inputs)  # pyrefly: ignore
-            raw = cast("Any", _feature_tensor(features).cpu().numpy())  # pyrefly: ignore  # pyrefly: ignore
+            wavs_24k = _to_24k(batch)
+            wavs = torch.tensor(np.stack(wavs_24k), dtype=torch.float32).to(device)
+            embeds = model(wavs=wavs)
+            raw: Any = cast("Any", embeds).cpu().numpy()  # pyrefly: ignore
             # numpy shape stubs lack __setitem__ (facebook/pyrefly#4901); slice-assign is valid at runtime.
-            out[i * batch_size : i * batch_size + len(batch)] = np.asarray(raw, dtype=np.float32)  # pyrefly: ignore[unsupported-operation]
+            out[i * batch_size : i * batch_size + len(batch)] = np.asarray(  # pyrefly: ignore[unsupported-operation]
+                raw, dtype=np.float32
+            )
     return _unit(out)
 
 
@@ -87,17 +75,10 @@ def embed_texts(texts: list[str]) -> np.ndarray:
         return np.empty((0, EMBED_DIM), dtype=np.float32)
     import torch
 
-    model, processor = load_model()
-    device = pick_device()
+    model = load_model()
     with torch.no_grad():
-        inputs = processor(
-            text=list(texts),
-            return_tensors="pt",  # pyrefly: ignore
-            padding=True,  # pyrefly: ignore
-        )
-        inputs = {k: v.to(device) for k, v in cast("Any", inputs).items()}
-        features = model.get_text_features(**inputs)  # pyrefly: ignore
-        raw = cast("Any", _feature_tensor(features).cpu().numpy())  # pyrefly: ignore
+        embeds = model(texts=list(texts))
+        raw: Any = cast("Any", embeds).cpu().numpy()  # pyrefly: ignore
     return _unit(np.asarray(raw, dtype=np.float32))
 
 

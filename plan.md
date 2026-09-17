@@ -1,13 +1,14 @@
 # local-smart-playlist
 
-Mood-based smart playlists for a local music library. CLAP audio embeddings +
+Mood-based smart playlists for a local music library. MuQ-MuLan audio embeddings +
 LLM query expansion → rank tracks by text queries like "melancholic", "moody
 late night".
 
 ## Stack
 
 - Python 3.13, managed with **uv** (`uv_build` backend)
-- **CLAP** (`laion/clap-htsat-fused`, 512-dim joint audio/text space) via transformers + torch
+- **MuQ-MuLan** (`OpenMuQ/MuQ-MuLan-large`, 512-dim joint audio/text space,
+  24 kHz input, CC-BY-NC weights) via the `muq` pip package + torch
 - **LSP index**: sqlite + **sqlite-vec**
 - Optional LLM caption expansion (OpenAI-compatible endpoint / ollama)
 - CLI: **typed-argparse**
@@ -18,7 +19,7 @@ late night".
 ```
 file → decode (mono, float32) → resample 48 kHz
      → RMS-trim silence → disjoint 10 s windows
-     → log-mel (64 bins, HTSAT norm) → batch → CLAP
+     → resample 48→24 kHz → batch → MuQ-MuLan
      → per-window 512-dim vecs → store
      → track vec = mean / p90 (both kept)
 ```
@@ -55,7 +56,7 @@ local-smart-playlist/
 │   │   ├── windowing.py             # RMS-trim, 10 s windows
 │   │   └── features.py              # mel-spec prep, batch assembly
 │   ├── embed/
-│   │   ├── model.py                 # lazy CLAP load, batched window embed
+│   │   ├── model.py                 # lazy MuQ-MuLan load, batched window embed
 │   │   └── aggregate.py             # mean/p90 track vectors
 │   ├── index/
 │   │   ├── library.py               # file discovery, stable track ids
@@ -97,7 +98,7 @@ optional: httpx (LLM expansion client)
 
 1. Scaffold: uv init, deps, ruff/pyrefly config (copied from bandcamp-dl), git
 2. `audio/` + unit tests (pure functions, no torch)
-3. `embed/` + CLAP sanity test on fixture wav
+3. `embed/` + MuQ sanity test on fixture wav
 4. `index/store.py` schema + resumable scan
 5. `index_cmd.py` end-to-end indexing
 6. `query/` direct-text search (skip LLM) + `play_cmd`

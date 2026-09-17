@@ -10,7 +10,7 @@ Guidelines for coding agents working in this repo.
 - Types: `uv run pyrefly check` — strict preset, do not weaken it; annotate
   everything.
 - Tests: `uv run pytest` (model tests deselected by default; `uv run pytest
--m model` runs the CLAP sanity suite locally, requires network).
+-m model` runs the MuQ-MuLan sanity suite locally, requires network).
 
 ## Conventions
 

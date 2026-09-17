@@ -25,6 +25,7 @@ class PlayArgs:
         llm: bool,
         seed_track: str | None,
         alpha: float,
+        min_score: float,
         dry: bool,
     ) -> None:
         cap_torch_threads()
@@ -50,8 +51,9 @@ class PlayArgs:
                     store, qvec, k=n if n is not None else store.track_count(), exclude=exclude, alpha=alpha
                 )
 
+        ranked = [(t, s) for t, s in ranked if s >= min_score]
         if len(ranked) == 0:
-            raise SystemExit("no indexed tracks matched")
+            raise SystemExit(f"no tracks scored >= {min_score}; lower --min-score")
 
         root = Path(library_root) if library_root is not None else Path.cwd()
         entries: list[tuple[Path, str, float, float]] = [

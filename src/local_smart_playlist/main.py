@@ -25,6 +25,7 @@ class PlayArgs(tap.TypedArgs):
     llm: bool = tap.arg(help="Expand the query with an LLM (OpenAI-compatible endpoint)")
     seed_track: str | None = tap.arg(default=None, metavar="PATH", help="Use a track's vector as the query instead of text")
     alpha: float = tap.arg(default=0.7, help="Peak-window weight in scoring (0 = mean only, 1 = peak only)")
+    min_score: float = tap.arg(default=0.45, help="Keep only tracks scoring at least this (default: all are ranked, kept ones filtered)")
     dry: bool = tap.arg(help="Print the result without writing a playlist")
     db: Path | None = tap.arg(type=Path, help="Index DB path (default: $XDG_DATA_HOME/sp/index.db)")
 
@@ -37,6 +38,7 @@ class PlayArgs(tap.TypedArgs):
             llm=self.llm,
             seed_track=self.seed_track,
             alpha=self.alpha,
+            min_score=self.min_score,
             dry=self.dry,
         )
 

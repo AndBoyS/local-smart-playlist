@@ -12,7 +12,7 @@ class IndexArgs(tap.TypedArgs):
     root: Path = tap.arg(positional=True, metavar="ROOT", help="Library root directory")
     rescan: bool = tap.arg(help="Re-index tracks already present in the DB")
     progress: bool = tap.arg(help="Show a progress bar")
-    db: Path | None = tap.arg(type=Path, help="Index DB path (default: $XDG_DATA_HOME/sp/index.db)")
+    db: Path | None = tap.arg(type=Path, help="Index DB path (default: .sp-index/index.db, relative to the working directory)")
 
     def run(self) -> None:
         index_cmd.IndexArgs.run(root=Path(self.root).expanduser(), db=self.db, rescan=self.rescan, progress=self.progress)
@@ -27,7 +27,7 @@ class PlayArgs(tap.TypedArgs):
     alpha: float = tap.arg(default=0.7, help="Peak-window weight in scoring (0 = mean only, 1 = peak only)")
     min_score: float = tap.arg(default=0.45, help="Keep only tracks scoring at least this (default: all are ranked, kept ones filtered)")
     dry: bool = tap.arg(help="Print the result without writing a playlist")
-    db: Path | None = tap.arg(type=Path, help="Index DB path (default: $XDG_DATA_HOME/sp/index.db)")
+    db: Path | None = tap.arg(type=Path, help="Index DB path (default: .sp-index/index.db, relative to the working directory)")
 
     def run(self) -> None:
         playlist_cmd.PlayArgs.run(
@@ -44,7 +44,7 @@ class PlayArgs(tap.TypedArgs):
 
 
 class StatusArgs(tap.TypedArgs):
-    db: Path | None = tap.arg(type=Path, help="Index DB path (default: $XDG_DATA_HOME/sp/index.db)")
+    db: Path | None = tap.arg(type=Path, help="Index DB path (default: .sp-index/index.db, relative to the working directory)")
 
     def run(self) -> None:
         status_cmd.StatusArgs.run(db=self.db)

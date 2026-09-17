@@ -24,8 +24,8 @@ Search is two-stage: track-mean KNN prefilter, then exact peak-window rescore.
 Score = alpha * max cos(query, window) + (1-alpha) * cos(query, track mean);
 `--alpha` tunes peak-mood vs whole-track mood (default 0.7).
 
-Index DB defaults to `$XDG_DATA_HOME/sp/index.db` (macOS:
-`~/Library/Application Support/sp/index.db`); override with `--db`.
+Index DB defaults to `.sp-index/index.db` relative to the current working
+directory; override with `--db`.
 
 LLM caption expansion (`--llm`) uses any OpenAI-compatible endpoint, by
 default OpenCode Go; the prompt is grounded in the readout vocabulary

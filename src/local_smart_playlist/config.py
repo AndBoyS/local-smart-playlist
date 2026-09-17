@@ -1,15 +1,11 @@
 """Paths for the index DB and model cache."""
 
-
-import os
 from pathlib import Path
 
 
 def default_db_path() -> Path:
-    """$XDG_DATA_HOME/sp/index.db (macOS: ~/Library/Application Support/sp/index.db)."""
-    xdg = os.environ.get("XDG_DATA_HOME")
-    base = Path(xdg) if xdg is not None else Path.home() / "Library" / "Application Support"
-    return base / "sp" / "index.db"
+    """.sp-index/index.db relative to the current working directory."""
+    return Path(".sp-index") / "index.db"
 
 
 def default_playlist_dir(library_root: Path) -> Path:

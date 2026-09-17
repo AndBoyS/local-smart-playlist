@@ -20,7 +20,7 @@ class IndexArgs(tap.TypedArgs):
 
 class PlayArgs(tap.TypedArgs):
     query: str = tap.arg(positional=True, metavar="QUERY", help="Mood word or phrase")
-    n: int = tap.arg("-n", default=30, help="Number of tracks")
+    n: int | None = tap.arg("-n", default=None, help="Number of tracks (default: all indexed)")
     out: str | None = tap.arg("-o", default=None, help="Output m3u8 path, or '-' for stdout")
     llm: bool = tap.arg(help="Expand the query with an LLM (OpenAI-compatible endpoint)")
     seed_track: str | None = tap.arg(default=None, metavar="PATH", help="Use a track's vector as the query instead of text")

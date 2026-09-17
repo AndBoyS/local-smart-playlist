@@ -20,7 +20,7 @@ class PlayArgs:
         *,
         query: str,
         db: Path | None,
-        n: int,
+        n: int | None,
         out: str | None,
         llm: bool,
         seed_track: str | None,
@@ -41,10 +41,14 @@ class PlayArgs:
                 if seed is None:
                     raise SystemExit(f"seed track not in index: {seed_track}")
                 exclude.add(seed.rel_path)
-                ranked = rank_by_similarity(store, seed.mean_vec, k=n, exclude=exclude, alpha=alpha)
+                ranked = rank_by_similarity(
+                    store, seed.mean_vec, k=n if n is not None else store.track_count(), exclude=exclude, alpha=alpha
+                )
             else:
                 qvec = query_vector(query, embed_texts, use_llm=llm)
-                ranked = rank_hybrid(store, qvec, k=n, exclude=exclude, alpha=alpha)
+                ranked = rank_hybrid(
+                    store, qvec, k=n if n is not None else store.track_count(), exclude=exclude, alpha=alpha
+                )
 
         if len(ranked) == 0:
             raise SystemExit("no indexed tracks matched")

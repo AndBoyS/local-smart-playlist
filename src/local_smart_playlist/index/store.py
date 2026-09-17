@@ -273,6 +273,12 @@ class Store:
 
     # -- search ------------------------------------------------------------
 
+    def all_track_means(self) -> list[tuple[str, np.ndarray]]:
+        """Every (rel_path, mean_vec) — full scan for over-KNN-limit ranking."""
+        rows = self._conn.execute("SELECT rel_path, mean_vec FROM tracks").fetchall()
+        return [(cast("str", r[0]), _deserialize(cast("bytes", r[1]), self._embed_dim)) for r in rows]
+
+
     def knn(self, *, query_vec: np.ndarray, k: int) -> list[KnnHit]:
         """Nearest tracks by cosine distance on the mean vector."""
         rows = self._conn.execute(

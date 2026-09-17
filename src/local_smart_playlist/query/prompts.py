@@ -10,14 +10,17 @@ DEFAULT_MODEL = "llama3.2"
 
 _SYSTEM_PROMPT = (
     "You expand a mood word or short mood phrase into candidate descriptions of "
-    "how the matching music would sound. Reply with 5-10 lines, one description "
+    "how music matching it could sound. Try to cover as many possible ways as "
+    "you can: every genre, era, instrumentation and energy level the phrase "
+    "could plausibly describe, plus paraphrases of the dominant reading. Do not "
+    "limit yourself to one interpretation. Aim for 15-20 lines, one description "
     "per line, no numbering, no extra commentary. Each line is a vivid caption in "
     "the style of a music tagger, describing tempo, instrumentation, vocals, mood "
     'and production, e.g. "a slow melancholic song with soft vocals, sparse piano '
     'and a minor key".'
 )
 
-MAX_PROMPTS = 10
+MAX_PROMPTS = 20
 MIN_PROMPTS = 5
 MIN_CAPTION_LEN = 8
 
@@ -33,7 +36,7 @@ def _settings() -> tuple[str, str, str]:
 
 
 def expand_mood(mood: str) -> list[str]:
-    """Ask the LLM for 5-10 caption-style prompts describing *mood* music."""
+    """Ask the LLM for up to 20 caption-style prompts covering many readings of *mood*."""
     import httpx
 
     base_url, model, api_key = _settings()
@@ -46,7 +49,7 @@ def expand_mood(mood: str) -> list[str]:
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": f"Mood: {mood}"},
         ],
-        "temperature": 0.7,
+        "temperature": 0.9,
     }
     try:
         resp = httpx.post(f"{base_url.rstrip('/')}/chat/completions", json=body, headers=headers, timeout=30.0)

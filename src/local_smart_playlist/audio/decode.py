@@ -41,9 +41,14 @@ def decode_mono(path: Path) -> tuple[np.ndarray, float]:
         else:
             msg = f"unsupported extension {ext!r}"
             raise DecodeError(msg)
-    except (sf.LibsndfileError, RuntimeError, OSError) as exc:
-        msg = f"decode failed: {exc}"
-        raise DecodeError(msg) from exc
+    except (sf.LibsndfileError, RuntimeError, OSError) as first_exc:
+        # libsndfile/MPG123 chokes on some valid MP3s (ID3 comment quirks);
+        # retry through the ffmpeg CLI before giving up.
+        try:
+            samples, sr = _decode_ffmpeg_cli(path)
+        except DecodeError:
+            msg = f"decode failed: {first_exc}"
+            raise DecodeError(msg) from first_exc
 
     mono = samples.mean(axis=1).astype(np.float32)
     if sr != TARGET_SR:
@@ -53,17 +58,19 @@ def decode_mono(path: Path) -> tuple[np.ndarray, float]:
 
 
 def _decode_torchaudio(path: Path) -> tuple[np.ndarray, int]:
-    """Decode via torchaudio's ffmpeg backend, using ffmpeg CLI as last resort."""
+    """Decode via torchaudio (torchcodec backend), falling back to the ffmpeg CLI."""
     try:
         import torchaudio
 
         tensor, sr = torchaudio.load(path)
         arr = tensor.numpy()
         return arr.T.astype(np.float32), sr
-    except Exception:  # noqa: BLE001 — any torchaudio/ffmpeg failure falls through to CLI
-        pass
+    except Exception:  # noqa: BLE001 — any torchaudio failure falls through to CLI
+        return _decode_ffmpeg_cli(path)
 
-    # Pure-CLI fallback: works wherever an ffmpeg binary exists.
+
+def _decode_ffmpeg_cli(path: Path) -> tuple[np.ndarray, int]:
+    """Decode to mono f32le via the ffmpeg binary (last resort)."""
     try:
         proc = subprocess.run(  # noqa: S603 — fixed argv
             [

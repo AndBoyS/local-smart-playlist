@@ -5,8 +5,8 @@ import os
 from collections.abc import Sequence
 from typing import Any, cast
 
-DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
-DEFAULT_MODEL = "llama3.2"
+DEFAULT_BASE_URL = "https://opencode.ai/zen/go/v1"  # OpenCode Go subscription
+DEFAULT_MODEL = "deepseek-v4-flash"
 
 _SYSTEM_PROMPT = (
     "You expand a mood word or short mood phrase into candidate descriptions of "
@@ -32,15 +32,17 @@ class LlmError(Exception):
 def _settings() -> tuple[str, str, str]:
     base_url = os.environ.get("SP_LLM_BASE_URL", DEFAULT_BASE_URL)
     model = os.environ.get("SP_LLM_MODEL", DEFAULT_MODEL)
-    return base_url, model, os.environ.get("SP_LLM_API_KEY", "")
+    api_key = os.environ.get("SP_LLM_API_KEY") or os.environ.get("OPENCODE_API_KEY", "")
+    return base_url, model, api_key
 
 
 def expand_mood(mood: str) -> list[str]:
     """Ask the LLM for up to 20 caption-style prompts covering many readings of *mood*."""
     import httpx
+    import uuid
 
     base_url, model, api_key = _settings()
-    headers = {}
+    headers = {"x-opencode-session": uuid.uuid4().hex}
     if api_key != "":
         headers["Authorization"] = f"Bearer {api_key}"
     body = {

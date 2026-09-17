@@ -31,9 +31,9 @@ LLM caption expansion (`--llm`) uses any OpenAI-compatible endpoint, by
 default a local ollama:
 
 ```
-SP_LLM_BASE_URL  # default http://127.0.0.1:11434/v1
-SP_LLM_API_KEY   # optional
-SP_LLM_MODEL     # default llama3.2
+SP_LLM_BASE_URL  # default https://opencode.ai/zen/go/v1 (OpenCode Go)
+SP_LLM_API_KEY   # default: $OPENCODE_API_KEY
+SP_LLM_MODEL     # default deepseek-v4-flash
 ```
 
 Model test suite (CLAP download) is marked `model` and skipped by default:

@@ -14,6 +14,7 @@ uv run sp status
 - `sp index <root> [--rescan] [--progress] [--db PATH]`
 - `sp play "<query>" [-n 30] [-o out.m3u8|-] [--llm] [--seed-track PATH] [--dry]`
 - `sp status [--db PATH]`
+- `sp describe PATH [-n 10] [--db PATH]` — top caption-vocab neighbors for an indexed track (offline; no LLM)
 
 Playlists are written to `<library root>/[Playlists]/<query slug>.m3u8` with
 paths relative to the playlist file, so they stay portable across synced

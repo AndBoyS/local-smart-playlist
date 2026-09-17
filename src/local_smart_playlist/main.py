@@ -5,7 +5,7 @@ from pathlib import Path
 
 import typed_argparse as tap
 
-from local_smart_playlist.commands import index_cmd, playlist_cmd, status_cmd
+from local_smart_playlist.commands import describe_cmd, index_cmd, playlist_cmd, status_cmd
 
 
 class IndexArgs(tap.TypedArgs):
@@ -43,6 +43,15 @@ class PlayArgs(tap.TypedArgs):
         )
 
 
+class DescribeArgs(tap.TypedArgs):
+    path: str = tap.arg(positional=True, metavar="PATH", help="Track path (absolute, cwd-relative, or indexed rel path)")
+    n: int = tap.arg("-n", default=describe_cmd.DEFAULT_TOP_N, help="Number of captions to show (default: 10)")
+    db: Path | None = tap.arg(type=Path, help="Index DB path (default: .sp-index/index.db, relative to the working directory)")
+
+    def run(self) -> None:
+        describe_cmd.DescribeArgs.run(path=self.path, db=self.db, n=self.n)
+
+
 class StatusArgs(tap.TypedArgs):
     db: Path | None = tap.arg(type=Path, help="Index DB path (default: .sp-index/index.db, relative to the working directory)")
 
@@ -55,13 +64,14 @@ def main() -> None:
         tap.SubParserGroup(
             tap.SubParser("index", IndexArgs, help="Index a music library"),
             tap.SubParser("play", PlayArgs, help="Build a mood playlist"),
+            tap.SubParser("describe", DescribeArgs, help="Describe an indexed track with caption-vocab neighbors"),
             tap.SubParser("status", StatusArgs, help="Show index coverage"),
             description="Mood-based smart playlists over a local music library.",
         ),
         prog="sp",
     )
     args = parser.parse_args()
-    if isinstance(args, IndexArgs | PlayArgs | StatusArgs):
+    if isinstance(args, IndexArgs | PlayArgs | DescribeArgs | StatusArgs):
         args.run()
 
 

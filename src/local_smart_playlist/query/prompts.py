@@ -14,6 +14,11 @@ def _load_vocab() -> str:
     return resources.files("local_smart_playlist.data").joinpath("caption_vocab.txt").read_text(encoding="utf-8")
 
 
+def caption_vocab() -> list[str]:
+    """Readout vocabulary lines, blank-stripped."""
+    return [line.strip() for line in _load_vocab().splitlines() if line.strip() != ""]
+
+
 _SYSTEM_PROMPT = (
     "You expand a mood word or short mood phrase into candidate descriptions of "
     "how music matching it could sound. Your output is fed to an audio-text "

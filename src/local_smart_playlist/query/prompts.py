@@ -1,6 +1,5 @@
 """Mood word → LLM caption expansion (OpenAI-compatible endpoint)."""
 
-from __future__ import annotations
 
 import os
 from collections.abc import Sequence

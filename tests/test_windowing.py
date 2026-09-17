@@ -1,6 +1,5 @@
 """Windowing + trim tests (no torch)."""
 
-from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path

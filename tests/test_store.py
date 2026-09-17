@@ -1,6 +1,5 @@
 """Store tests with a real sqlite-vec, synthetic vectors."""
 
-from __future__ import annotations
 
 from pathlib import Path
 

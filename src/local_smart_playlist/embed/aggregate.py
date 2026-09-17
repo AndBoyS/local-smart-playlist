@@ -1,6 +1,5 @@
 """Track-level aggregation of window vectors."""
 
-from __future__ import annotations
 
 import numpy as np
 

@@ -1,6 +1,5 @@
 """Lazy CLAP model loading and window embedding."""
 
-from __future__ import annotations
 
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, cast
@@ -17,7 +16,7 @@ EMBED_DIM = 512
 
 
 @lru_cache(maxsize=1)
-def load_model() -> tuple[ClapModel, ClapProcessor]:
+def load_model() -> "tuple[ClapModel, ClapProcessor]":
     """Load CLAP model + processor once (downloads to the HF cache on first use)."""
     from transformers import AutoProcessor, ClapModel
 

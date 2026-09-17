@@ -1,6 +1,5 @@
 """Real CLAP model sanity tests (marked `model`; run with `uv run pytest -m model`)."""
 
-from __future__ import annotations
 
 from typing import Any, cast
 

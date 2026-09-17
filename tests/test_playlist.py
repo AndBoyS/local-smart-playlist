@@ -1,6 +1,5 @@
 """m3u8 playlist writer tests."""
 
-from __future__ import annotations
 
 from pathlib import Path
 

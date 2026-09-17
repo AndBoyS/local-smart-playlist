@@ -1,6 +1,5 @@
 """File discovery and stable track identity."""
 
-from __future__ import annotations
 
 from pathlib import Path
 

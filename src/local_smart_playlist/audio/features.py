@@ -1,6 +1,5 @@
 """Batch assembly for CLAP feature extraction."""
 
-from __future__ import annotations
 
 from collections.abc import Iterator
 

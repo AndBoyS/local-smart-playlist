@@ -1,6 +1,5 @@
 """Search ranking tests with a fake embedder and hybrid two-stage scoring."""
 
-from __future__ import annotations
 
 from pathlib import Path
 from typing import Any

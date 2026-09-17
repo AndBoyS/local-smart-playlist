@@ -1,18 +1,14 @@
 """SQLite + sqlite-vec track vector store."""
 
-from __future__ import annotations
-
 import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
+from os import PathLike
+from typing import cast
 
 import numpy as np
 import sqlite_vec
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-    from os import PathLike
 
 SCHEMA_VERSION = "2"
 
@@ -96,7 +92,7 @@ class Store:
     def close(self) -> None:
         self._conn.close()
 
-    def __enter__(self) -> Store:
+    def __enter__(self) -> "Store":
         return self
 
     def __exit__(self, *exc: object) -> None:

@@ -1,6 +1,5 @@
 """m3u8 playlist writing."""
 
-from __future__ import annotations
 
 import re
 import unicodedata

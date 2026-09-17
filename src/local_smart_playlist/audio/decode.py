@@ -1,6 +1,5 @@
 """Decode audio files to mono float32 at 48 kHz."""
 
-from __future__ import annotations
 
 import subprocess
 from pathlib import Path

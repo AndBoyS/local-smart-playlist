@@ -11,7 +11,7 @@ uv run sp status
 ```
 
 - CLI binary: `sp`
-- `sp index <root> [--rescan] [--progress] [--db PATH]`
+- `sp index <root> [--rescan] [--quiet] [--db PATH]`
 - `sp play "<query>" [-n 30] [-o out.m3u8|-] [--llm] [--seed-track PATH] [--dry]`
 - `sp status [--db PATH]`
 - `sp describe PATH [-n 10] [--db PATH]` — top caption-vocab neighbors for an indexed track (offline; no LLM)

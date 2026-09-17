@@ -81,7 +81,7 @@ local-smart-playlist/
 Subcommands via typed-argparse program:
 
 ```console
-sp index ~/Music [--rescan] [--progress]
+sp index ~/Music [--rescan] [--quiet]
 sp play "melancholic" [-n 30] [-o out.m3u8] [--seed-track path] [--dry]
 sp status
 ```

@@ -25,7 +25,7 @@ class IndexArgs:
     """Typed via main.py; this module exposes the implementation."""
 
     @staticmethod
-    def run(*, root: Path, db: Path | None, rescan: bool, progress: bool) -> None:
+    def run(*, root: Path, db: Path | None, rescan: bool, quiet: bool) -> None:
         cap_torch_threads()
         db_path = db if db is not None else default_db_path()
         db_path.parent.mkdir(parents=True, exist_ok=True)  # noqa: PTH110
@@ -47,7 +47,7 @@ class IndexArgs:
                 BarColumn(),
                 MofNCompleteColumn(),
                 TimeElapsedColumn(),
-                disable=not progress,
+                disable=quiet,
             ) as bar:
                 task = bar.add_task("indexing", total=len(todo_paths))
                 now = datetime.datetime.now().isoformat(timespec="seconds")

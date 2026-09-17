@@ -11,11 +11,11 @@ from local_smart_playlist.commands import describe_cmd, index_cmd, playlist_cmd,
 class IndexArgs(tap.TypedArgs):
     root: Path = tap.arg(positional=True, metavar="ROOT", help="Library root directory")
     rescan: bool = tap.arg(help="Re-index tracks already present in the DB")
-    progress: bool = tap.arg(help="Show a progress bar")
+    quiet: bool = tap.arg(help="Hide the progress bar (shown by default)")
     db: Path | None = tap.arg(type=Path, help="Index DB path (default: .sp-index/index.db, relative to the working directory)")
 
     def run(self) -> None:
-        index_cmd.IndexArgs.run(root=Path(self.root).expanduser(), db=self.db, rescan=self.rescan, progress=self.progress)
+        index_cmd.IndexArgs.run(root=Path(self.root).expanduser(), db=self.db, rescan=self.rescan, quiet=self.quiet)
 
 
 class PlayArgs(tap.TypedArgs):

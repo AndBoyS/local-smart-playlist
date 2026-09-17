@@ -32,14 +32,22 @@ class LlmError(Exception):
 def _settings() -> tuple[str, str, str]:
     base_url = os.environ.get("SP_LLM_BASE_URL", DEFAULT_BASE_URL)
     model = os.environ.get("SP_LLM_MODEL", DEFAULT_MODEL)
-    api_key = os.environ.get("SP_LLM_API_KEY") or os.environ.get("OPENCODE_API_KEY", "")
+    sp_key = os.environ.get("SP_LLM_API_KEY")
+    oc_key = os.environ.get("OPENCODE_API_KEY")
+    if sp_key is not None:
+        api_key = sp_key
+    elif oc_key is not None:
+        api_key = oc_key
+    else:
+        api_key = ""
     return base_url, model, api_key
 
 
 def expand_mood(mood: str) -> list[str]:
     """Ask the LLM for up to 20 caption-style prompts covering many readings of *mood*."""
-    import httpx
     import uuid
+
+    import httpx
 
     base_url, model, api_key = _settings()
     headers = {"x-opencode-session": uuid.uuid4().hex}

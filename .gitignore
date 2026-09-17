@@ -1,6 +1,6 @@
 .venv/
 dist/
-.lsp-index/
+.sp-index/
 .pytest_cache/
 .ruff_cache/
 .pyrefly_cache/

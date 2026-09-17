@@ -29,6 +29,7 @@ class IndexArgs:
     def run(*, root: Path, db: Path | None, rescan: bool, progress: bool) -> None:
         cap_torch_threads()
         db_path = db if db is not None else default_db_path()
+        db_path.parent.mkdir(parents=True, exist_ok=True)  # noqa: PTH110
         root = root.expanduser().resolve()
         if not root.is_dir():
             raise SystemExit(f"not a directory: {root}")

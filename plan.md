@@ -65,8 +65,8 @@ local-smart-playlist/
 │   │   ├── search.py                # text embed, max-window scoring, rank
 │   │   └── playlist.py              # results → m3u8 writer
 │   └── commands/
-│       ├── index_cmd.py             # lisp index ~/Music [--rescan]
-│       ├── playlist_cmd.py          # lisp play "melancholic" -n 30 -o x.m3u8
+│       ├── index_cmd.py             # sp index ~/Music [--rescan]
+│       ├── playlist_cmd.py          # sp play "melancholic" -n 30 -o x.m3u8
 │       └── status_cmd.py            # coverage stats
 ├── tests/
 │   ├── test_windowing.py
@@ -80,9 +80,9 @@ local-smart-playlist/
 Subcommands via typed-argparse program:
 
 ```console
-lsp index ~/Music [--rescan] [--progress]
-lsp play "melancholic" [-n 30] [-o out.m3u8] [--seed-track path] [--dry]
-lsp status
+sp index ~/Music [--rescan] [--progress]
+sp play "melancholic" [-n 30] [-o out.m3u8] [--seed-track path] [--dry]
+sp status
 ```
 
 ## Dependencies

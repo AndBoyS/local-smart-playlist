@@ -76,7 +76,8 @@ def embed_windows(windows: list[np.ndarray], *, batch_size: int = 16) -> np.ndar
             inputs = {k: v.to(device) for k, v in cast("Any", inputs).items()}
             features = model.get_audio_features(**inputs)  # pyrefly: ignore
             raw = cast("Any", _feature_tensor(features).cpu().numpy())  # pyrefly: ignore  # pyrefly: ignore
-            out[i * batch_size : i * batch_size + len(batch)] = np.asarray(raw, dtype=np.float32)
+            # numpy shape stubs lack __setitem__ (facebook/pyrefly#4901); slice-assign is valid at runtime.
+            out[i * batch_size : i * batch_size + len(batch)] = np.asarray(raw, dtype=np.float32)  # pyrefly: ignore[unsupported-operation]
     return _unit(out)
 
 

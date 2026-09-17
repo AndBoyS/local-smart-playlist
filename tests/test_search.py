@@ -21,7 +21,7 @@ DIM = 32
 
 def basis(i: int) -> np.ndarray:
     v = np.zeros(DIM, dtype=np.float32)
-    v[i] = 1.0
+    v[i] = 1.0  # pyrefly: ignore[unsupported-operation]  # numpy shape stubs lack __setitem__ (facebook/pyrefly#4901)
     return v
 
 
@@ -31,20 +31,20 @@ def fake_embedder(texts: list[str]) -> np.ndarray:
     for i, text in enumerate(texts):
         low = text.lower()
         if low.startswith("sad"):
-            out[i] = basis(0)
+            out[i] = basis(0)  # pyrefly: ignore[unsupported-operation]
         elif low.startswith("happy"):
-            out[i] = basis(1)
+            out[i] = basis(1)  # pyrefly: ignore[unsupported-operation]
         else:
             v = np.zeros(DIM, dtype=np.float32)
-            v[sum(ord(c) for c in low) % DIM] = 1.0
-            out[i] = v
+            v[sum(ord(c) for c in low) % DIM] = 1.0  # pyrefly: ignore[unsupported-operation]
+            out[i] = v  # pyrefly: ignore[unsupported-operation]
     return out
 
 
 def upsert_track(store: Store, rel_path: str, window_vecs: np.ndarray) -> None:
     window_vecs = np.asarray(window_vecs, dtype=np.float32)
     mean = window_vecs.mean(axis=0)
-    mean = (mean / np.linalg.norm(mean)).astype(np.float32)
+    mean = (mean / float(np.linalg.norm(mean))).astype(np.float32)
     store.upsert(
         rel_path=rel_path,
         mean_vec=mean,

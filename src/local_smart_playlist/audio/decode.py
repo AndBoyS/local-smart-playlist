@@ -1,5 +1,6 @@
 """Decode audio files to mono float32 at 48 kHz."""
 
+from __future__ import annotations
 
 import subprocess
 from pathlib import Path
@@ -7,6 +8,9 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 import soxr
+from shape_extensions import IntVar
+
+N = IntVar("N")
 
 TARGET_SR = 48_000
 
@@ -26,7 +30,7 @@ def supports(path: Path) -> bool:
     return path.suffix.lower() in AUDIO_EXTS
 
 
-def decode_mono(path: Path) -> tuple[np.ndarray, float]:
+def decode_mono(path: Path) -> tuple[np.ndarray[[N]], float]:
     """Decode *path* to mono float32 at TARGET_SR.
 
     Returns (samples, duration_seconds). Uses soundfile when the format is

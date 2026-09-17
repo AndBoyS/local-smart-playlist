@@ -87,7 +87,7 @@ def rank_hybrid(
         ).ravel()
         order = np.argsort(-sims)[:want]
         candidates = [
-            _Candidate(rel_path=cast("str", rows[i][0]), mean_sim=float(sims[i])) for i in order
+            _Candidate(rel_path=cast("str", rows[i.item()][0]), mean_sim=float(sims[i])) for i in order
         ]
     else:
         knn = store.knn(query_vec=query_vec, k=want)

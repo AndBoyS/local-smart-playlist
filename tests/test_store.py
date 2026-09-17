@@ -13,7 +13,7 @@ DIM = 64
 
 def basis_vec(i: int) -> np.ndarray:
     v = np.zeros(DIM, dtype=np.float32)
-    v[i] = 1.0
+    v[i] = 1.0  # pyrefly: ignore[unsupported-operation]  # numpy shape stubs lack __setitem__ (facebook/pyrefly#4901)
     return v
 
 

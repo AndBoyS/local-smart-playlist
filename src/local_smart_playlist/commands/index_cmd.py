@@ -64,6 +64,7 @@ class IndexArgs:
                             continue
                         window_vecs = embed_windows(windows)
                         mean_vec, p90_vec = aggregate(window_vecs)
+                        store.add_windows(rel_path=rel, window_vecs=window_vecs)
                         store.upsert(
                             rel_path=rel,
                             mean_vec=mean_vec,

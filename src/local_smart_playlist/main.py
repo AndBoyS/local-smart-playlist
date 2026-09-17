@@ -25,6 +25,7 @@ class PlayArgs(tap.TypedArgs):
     out: str | None = tap.arg("-o", default=None, help="Output m3u8 path, or '-' for stdout")
     llm: bool = tap.arg(help="Expand the query with an LLM (OpenAI-compatible endpoint)")
     seed_track: str | None = tap.arg(default=None, metavar="PATH", help="Use a track's vector as the query instead of text")
+    alpha: float = tap.arg(default=0.7, help="Peak-window weight in scoring (0 = mean only, 1 = peak only)")
     dry: bool = tap.arg(help="Print the result without writing a playlist")
     db: Path | None = tap.arg(type=Path, help="Index DB path (default: $XDG_DATA_HOME/sp/index.db)")
 
@@ -36,6 +37,7 @@ class PlayArgs(tap.TypedArgs):
             out=self.out,
             llm=self.llm,
             seed_track=self.seed_track,
+            alpha=self.alpha,
             dry=self.dry,
         )
 

@@ -111,3 +111,47 @@ def test_knn_limit_exceeds_count(store: Store) -> None:
     assert len(hits) == 3
 
 
+
+
+def test_windows_roundtrip_and_prune(tmp_path: Path) -> None:
+    store = Store(tmp_path / "win.db", embed_dim=DIM)
+    vec = basis_vec(3)
+    store.upsert(
+        rel_path="a.mp3",
+        mean_vec=vec,
+        p90_vec=vec,
+        n_windows=2,
+        duration=60.0,
+        title="a",
+        model="test",
+        indexed_at="now",
+    )
+    store.add_windows(rel_path="a.mp3", window_vecs=np.stack([basis_vec(0), basis_vec(1)]))
+    assert store.window_count() == 2
+    loaded = store.load_windows(["a.mp3"])
+    assert np.allclose(loaded["a.mp3"], np.stack([basis_vec(0), basis_vec(1)]))
+
+    # add_windows replaces
+    store.add_windows(rel_path="a.mp3", window_vecs=np.stack([basis_vec(5)]))
+    assert store.window_count() == 1
+
+    # load_windows skips unknown paths
+    assert store.load_windows(["missing.mp3"]) == {}
+
+    # upsert clears stale windows
+    store.upsert(
+        rel_path="a.mp3",
+        mean_vec=vec,
+        p90_vec=vec,
+        n_windows=1,
+        duration=60.0,
+        title="a",
+        model="test",
+        indexed_at="now2",
+    )
+    assert store.window_count() == 0
+
+    # prune cascades
+    store.add_windows(rel_path="a.mp3", window_vecs=np.stack([basis_vec(0)]))
+    _removed = store.prune_missing({"b.mp3"})
+    assert store.window_count() == 0

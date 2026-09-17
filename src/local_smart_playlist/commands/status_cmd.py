@@ -31,6 +31,7 @@ class StatusArgs:
             table.add_row("library root", lib if lib is not None else "—")
             table.add_row("model", model_meta if model_meta is not None else MODEL_ID)
             table.add_row("tracks", str(store.track_count()))
+            table.add_row("windows", str(store.window_count()))
             table.add_row("failures", str(store.failure_count()))
             table.add_row("schema", schema if schema is not None else "?")
             rprint(table)

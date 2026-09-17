@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from os import PathLike
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -30,6 +30,12 @@ CREATE TABLE IF NOT EXISTS tracks (
     title TEXT NOT NULL,
     model TEXT NOT NULL,
     indexed_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS windows (
+    rel_path TEXT NOT NULL REFERENCES tracks(rel_path) ON DELETE CASCADE,
+    window_idx INTEGER NOT NULL,
+    vec BLOB NOT NULL,
+    PRIMARY KEY (rel_path, window_idx)
 );
 CREATE TABLE IF NOT EXISTS failures (
     rel_path TEXT PRIMARY KEY,
@@ -184,12 +190,45 @@ class Store:
                 indexed_at,
             ),
         )
+        _ = self._conn.execute("DELETE FROM tracks_vec WHERE rel_path = ?", (rel_path,))
         _ = self._conn.execute(
-            "INSERT OR REPLACE INTO tracks_vec(rel_path, mean_vec) VALUES (?, ?)",
+            "INSERT INTO tracks_vec(rel_path, mean_vec) VALUES (?, ?)",
             (rel_path, _serialize(mean_vec)),
         )
+        _ = self._conn.execute("DELETE FROM windows WHERE rel_path = ?", (rel_path,))
         _ = self._conn.execute("DELETE FROM failures WHERE rel_path = ?", (rel_path,))
         self._conn.commit()
+
+    def add_windows(self, *, rel_path: str, window_vecs: np.ndarray) -> None:
+        """Replace this track's window vectors with the given (n, dim) array."""
+        _ = self._conn.execute("DELETE FROM windows WHERE rel_path = ?", (rel_path,))
+        _ = self._conn.executemany(
+            "INSERT OR REPLACE INTO windows(rel_path, window_idx, vec) VALUES (?, ?, ?)",
+            [(rel_path, i, _serialize(vec)) for i, vec in enumerate(window_vecs)],
+        )
+        self._conn.commit()
+
+    def load_windows(self, rel_paths: Iterable[str]) -> dict[str, np.ndarray]:
+        """All window vectors grouped by rel_path, in window order."""
+        out: dict[str, list[np.ndarray]] = {}
+        ids = list(rel_paths)
+        chunk_size = 400  # sqlite variable limit headroom
+        for start in range(0, len(ids), chunk_size):
+            chunk = ids[start : start + chunk_size]
+            placeholders = ",".join("?" for _ in chunk)
+            rows = self._conn.execute(
+                f"""
+                SELECT rel_path, window_idx, vec FROM windows
+                WHERE rel_path IN ({placeholders})
+                ORDER BY rel_path, window_idx
+                """,
+                chunk,
+            ).fetchall()
+            for rel, _idx, blob in rows:
+                out.setdefault(cast("str", rel), []).append(
+                    _deserialize(cast("bytes", blob), self._embed_dim)
+                )
+        return {rel: np.stack(vecs) for rel, vecs in out.items()}
 
     def record_failure(self, *, rel_path: str, error: str, now: str) -> None:
         row = self._conn.execute("SELECT attempts FROM failures WHERE rel_path = ?", (rel_path,)).fetchone()
@@ -209,6 +248,7 @@ class Store:
         stale = [cast("str", r[0]) for r in tracks if cast("str", r[0]) not in valid]
         failures = self._conn.execute("SELECT rel_path FROM failures").fetchall()
         fstale = [cast("str", r[0]) for r in failures if cast("str", r[0]) not in valid]
+        _ = self._conn.executemany("DELETE FROM windows WHERE rel_path = ?", [(p,) for p in stale])
         _ = self._conn.executemany("DELETE FROM tracks WHERE rel_path = ?", [(p,) for p in stale])
         _ = self._conn.executemany("DELETE FROM tracks_vec WHERE rel_path = ?", [(p,) for p in stale])
         _ = self._conn.executemany("DELETE FROM failures WHERE rel_path = ?", [(p,) for p in fstale])
@@ -223,6 +263,10 @@ class Store:
 
     def failure_count(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) FROM failures").fetchone()
+        return cast("int", row[0])
+
+    def window_count(self) -> int:
+        row = self._conn.execute("SELECT COUNT(*) FROM windows").fetchone()
         return cast("int", row[0])
 
     def list_failures(self, limit: int = 20) -> list[tuple[str, str, int]]:

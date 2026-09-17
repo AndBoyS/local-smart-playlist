@@ -20,6 +20,10 @@ paths relative to the playlist file, so they stay portable across synced
 copies of the library (e.g. Dropbox → Android via FolderSync, consumed by
 AIMP). Use `-o` for a custom destination, `-o -` to print the m3u8 to stdout.
 
+Search is two-stage: track-mean KNN prefilter, then exact peak-window rescore.
+Score = alpha * max cos(query, window) + (1-alpha) * cos(query, track mean);
+`--alpha` tunes peak-mood vs whole-track mood (default 0.7).
+
 Index DB defaults to `$XDG_DATA_HOME/sp/index.db` (macOS:
 `~/Library/Application Support/sp/index.db`); override with `--db`.
 

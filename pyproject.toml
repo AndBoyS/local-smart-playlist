@@ -32,8 +32,8 @@ requires = ["uv_build>=0.9,<1"]
 build-backend = "uv_build"
 
 [tool.uv]
-# Reproducible resolution: ignore packages published in the last 7 days.
-exclude-newer = "2026-09-09T00:00:00Z"
+# Rolling 7-day cutoff: packages published in the last week are excluded at resolve time.
+exclude-newer = "7 days"
 
 [tool.ruff]
 line-length = 120

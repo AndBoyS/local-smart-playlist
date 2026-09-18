@@ -58,7 +58,7 @@ def main() -> None:
             total = len(ranked)
             scores = [s for _, s in ranked]
             arr = np.asarray(scores, dtype=np.float64)
-            qs = np.percentile(arr, (50, 75, 90, 95)).tolist()  # pyrefly: ignore
+            qs = np.percentile(arr, (50, 75, 90, 95)).tolist()
             cutoff = max(VOCAB_SCORE_FLOOR, 0.9) if total > 0 else 0.0
             passing = sum(1 for s in scores if s >= cutoff)
             print(f"\n== {query!r} — {total} ranked tracks")

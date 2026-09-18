@@ -29,7 +29,7 @@ def wav(tmp_path: Any) -> Callable[..., Any]:
 
     def write(*, name: str, samples: np.ndarray, sr: int = 48_000) -> Any:
         path = tmp_path / name
-        _ = sf.write(str(path), samples, sr)  # pyrefly: ignore
+        _ = sf.write(str(path), samples, sr)  # pyrefly: ignore[unknown-argument-type]
         return path
 
     return write

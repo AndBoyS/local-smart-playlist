@@ -27,9 +27,17 @@ Guidelines for coding agents working in this repo.
   `audio/features.py`, `audio/windowing.py`, `audio/decode.py`) use pyrefly shape
   types (`np.ndarray[[N, D]]` + `shape_extensions.IntVar`, one `IntVar` per line —
   tuple-assignment breaks the binding). `embed/model.py` torch boundary stays
-  unannotated/`Any`. Known stub gaps (add `# pyrefly: ignore` at use sites):
-  `__setitem__`, ndarray comparison dunders, `reshape`/`astype`-free reshape,
-  `np.percentile`, `np.mean`/`np.argmax` module form — prefer the tracked method
-  forms (`x.mean(axis=)`, `x.argmax()`) instead.
+  unannotated/`Any`. Every pyrefly suppression must name its error code —
+  `# pyrefly: ignore[<code>]` — bare `# pyrefly: ignore` is not allowed (same
+  rule as ruff's PGH). Known stub gaps, with the code to use at each site:
+  - `# pyrefly: ignore[unsupported-operation]`: `__setitem__` on shape-typed
+    arrays (facebook/pyrefly#4901), ndarray comparison dunders, reshape without
+    reshape/astype.
+  - `# pyrefly: ignore[unknown-argument-type]`: `np.where` fed `np.linalg.norm`
+    output, `np.asarray`/`np.log`/`np.exp`/`sf.write` over unknown-typed args.
+  Prefer the tracked method forms (`x.mean(axis=)`, `x.argmax()`) instead of a
+  new ignore. If a suppression stops being needed, delete it — verify by
+  removing it and re-running `uv run pyrefly check` (`unused-type-ignore = true`
+  catches stale ones).
 - Keep torch/transformers imports inside `embed/` and `audio/features.py`;
   everything else stays pure numpy/sqlite so tests run without the model.

@@ -38,7 +38,7 @@ PERCENTILE_SCALE = 100.0
 
 def _unit(vecs: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(vecs, axis=-1, keepdims=True)
-    safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore
+    safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore[unknown-argument-type]
     return np.asarray(vecs / safe, dtype=np.float32)
 
 
@@ -62,7 +62,7 @@ def pruned_argmax_share(q: np.ndarray, a: np.ndarray, *, twin_idx: int) -> float
 def sigmoid_prob(q: np.ndarray, a: np.ndarray, *, bar: Callable[[np.ndarray], np.ndarray], tau: float) -> float:
     """Mean over windows of sigmoid((cos_q - bar(anchor affinities)) / tau)."""
     p = 1.0 / (1.0 + np.exp(-(q - bar(a)) / tau))
-    return float(np.asarray(p).mean())  # pyrefly: ignore
+    return float(np.asarray(p).mean())  # pyrefly: ignore[unknown-argument-type]
 
 
 def softmax_mass_fixed(q: np.ndarray, a: np.ndarray, *, tau: float) -> float:
@@ -71,7 +71,7 @@ def softmax_mass_fixed(q: np.ndarray, a: np.ndarray, *, tau: float) -> float:
     cand = cand - cand.max(axis=1, keepdims=True)
     cand = np.exp(cand)
     p = cand[:, -1] / cand.sum(axis=1)
-    return float(np.asarray(p).mean())  # pyrefly: ignore
+    return float(np.asarray(p).mean())  # pyrefly: ignore[unknown-argument-type]
 
 
 def make_variants(twin_idx: int) -> list[Variant]:
@@ -80,7 +80,7 @@ def make_variants(twin_idx: int) -> list[Variant]:
         "median": lambda a: np.median(a, axis=1),
         "p25": lambda a: np.percentile(a, 25, axis=1),
         "p75": lambda a: np.percentile(a, 75, axis=1),
-        "logsumexp": lambda a: np.asarray(LOGSUMEXP_TAU * np.log(np.exp(a / LOGSUMEXP_TAU).sum(axis=1))),  # pyrefly: ignore
+        "logsumexp": lambda a: np.asarray(LOGSUMEXP_TAU * np.log(np.exp(a / LOGSUMEXP_TAU).sum(axis=1))),  # pyrefly: ignore[unknown-argument-type]
     }
     variants: list[Variant] = [
         ("V0 median margin", lambda q, a: float(np.median(q - a.mean(axis=1)))),
@@ -183,7 +183,7 @@ def main() -> None:
                     hits = [scores[name][i] for i, (t, _w) in enumerate(tracks) if _matches(t, needle)]
                     if len(hits) > 0:
                         print(f"      {needle!r} p: " + ", ".join(f"{h:.3f}" for h in sorted(hits, reverse=True)[:3]))
-                qs = np.percentile(arr, (50, 75, 90, 95)).tolist()  # pyrefly: ignore
+                qs = np.percentile(arr, (50, 75, 90, 95)).tolist()
                 print("      library p quantiles 50/75/90/95: " + " / ".join(f"{v:.3f}" for v in qs))
             for name, _ in variants:
                 order: list[int] = [int(i) for i in np.argsort(-np.asarray(scores[name], dtype=np.float64)).tolist()]

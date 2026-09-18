@@ -55,7 +55,7 @@ def vocab_vector_bank(embedder: TextEmbedder, vocab: list[str]) -> np.ndarray[[V
     """Unit-norm embeddings of the caption vocabulary, one row per caption."""
     vecs = np.asarray(embedder(vocab), dtype=np.float32)
     norms = np.linalg.norm(vecs, axis=-1, keepdims=True)
-    safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore
+    safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore[unknown-argument-type]
     return np.asarray(vecs / safe, dtype=np.float32)
 
 

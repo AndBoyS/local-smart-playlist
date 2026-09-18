@@ -60,7 +60,7 @@ MOOD_ANCHORS: list[str] = [
 
 def _unit(vecs: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(vecs, axis=-1, keepdims=True)
-    safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore
+    safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore[unknown-argument-type]
     return np.asarray(vecs / safe, dtype=np.float32)
 
 

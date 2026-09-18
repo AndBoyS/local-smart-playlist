@@ -30,7 +30,7 @@ def main() -> None:
         best_idx = sims.argmax(axis=1)
 
     order: list[int] = [int(v) for v in np.argsort(best).tolist()]
-    qs = np.percentile(best, (0, 1, 5, 10, 25, 50, 75, 95, 100)).tolist()  # pyrefly: ignore
+    qs = np.percentile(best, (0, 1, 5, 10, 25, 50, 75, 95, 100)).tolist()
     print(f"tracks={len(best)}  vocab={len(vocab)}")
     print("max-vocab-sim quantiles min/p1/p5/p10/p25/p50/p75/p95/max:")
     print("  " + " / ".join(f"{v:.3f}" for v in qs))

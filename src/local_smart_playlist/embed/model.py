@@ -38,7 +38,7 @@ def pick_device() -> str:
 
 def _unit(vectors: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(vectors, axis=-1, keepdims=True)
-    safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore
+    safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore[unknown-argument-type]
     return np.asarray(vectors / safe, dtype=np.float32)
 
 
@@ -61,7 +61,7 @@ def embed_windows(windows: list[np.ndarray], *, batch_size: int = 16) -> np.ndar
             wavs_24k = _to_24k(batch)
             wavs = torch.tensor(np.stack(wavs_24k), dtype=torch.float32).to(device)
             embeds = model(wavs=wavs)
-            raw: Any = cast("Any", embeds).cpu().numpy()  # pyrefly: ignore
+            raw: Any = cast("Any", embeds).cpu().numpy()
             # numpy shape stubs lack __setitem__ (facebook/pyrefly#4901); slice-assign is valid at runtime.
             out[i * batch_size : i * batch_size + len(batch)] = np.asarray(  # pyrefly: ignore[unsupported-operation]
                 raw, dtype=np.float32
@@ -78,7 +78,7 @@ def embed_texts(texts: list[str]) -> np.ndarray:
     model = load_model()
     with torch.no_grad():
         embeds = model(texts=list(texts))
-        raw: Any = cast("Any", embeds).cpu().numpy()  # pyrefly: ignore
+        raw: Any = cast("Any", embeds).cpu().numpy()
     return _unit(np.asarray(raw, dtype=np.float32))
 
 

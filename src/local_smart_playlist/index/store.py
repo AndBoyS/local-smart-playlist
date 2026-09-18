@@ -63,6 +63,15 @@ def _deserialize(blob: bytes, dim: int) -> np.ndarray:
 
 
 @dataclass(frozen=True)
+class TrackMeta:
+    """Track identity/metadata without vector payloads (for ranking scans)."""
+
+    rel_path: str
+    title: str
+    duration: float
+
+
+@dataclass(frozen=True)
 class TrackRow:
     rel_path: str
     mean_vec: np.ndarray
@@ -307,6 +316,18 @@ class Store:
                 rel_path=cast("str", r[0]),
                 title=cast("str", r[1]),
                 distance=cast("float", r[2]),
+            )
+            for r in rows
+        ]
+
+    def track_meta(self) -> list[TrackMeta]:
+        """Every (rel_path, title, duration) — one query, no BLOB deserialization."""
+        rows = self._conn.execute("SELECT rel_path, title, duration FROM tracks").fetchall()
+        return [
+            TrackMeta(
+                rel_path=cast("str", r[0]),
+                title=cast("str", r[1]),
+                duration=cast("float", r[2]),
             )
             for r in rows
         ]

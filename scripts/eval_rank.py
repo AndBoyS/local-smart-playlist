@@ -14,7 +14,7 @@ import argparse
 from pathlib import Path
 
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_texts
-from local_smart_playlist.index.store import Store, TrackRow
+from local_smart_playlist.index.store import Store, TrackMeta
 from local_smart_playlist.query.contrast import (
     baseline_vector,
     query_vector_contrast,
@@ -32,14 +32,14 @@ PREVIEW_COUNT = 5
 PERCENTILE_SCALE = 100.0
 
 
-def rank_full(store: Store, query: str) -> list[tuple[TrackRow, float]]:
+def rank_full(store: Store, query: str) -> list[tuple[TrackMeta, float]]:
     """Full-library sustained-mood ranking with the production ranker."""
     qvec = query_vector_contrast(query, embed_texts)
     bvec = baseline_vector(embed_texts)
     return rank_by_contrast(store, query_vec=qvec, baseline_vec=bvec, k=store.track_count())
 
 
-def report(ranked: list[tuple[TrackRow, float]], *, query: str, exemplars: list[str]) -> None:
+def report(ranked: list[tuple[TrackMeta, float]], *, query: str, exemplars: list[str]) -> None:
     total = len(ranked)
     print(f"== {query!r} — {total} ranked tracks")
     for needle in exemplars:
@@ -61,7 +61,7 @@ def report(ranked: list[tuple[TrackRow, float]], *, query: str, exemplars: list[
         print(f"     {score:+.3f}  {track.title}")
 
 
-def _matches(track: TrackRow, needle: str) -> bool:
+def _matches(track: TrackMeta, needle: str) -> bool:
     needle_l = needle.lower()
     return needle_l in track.rel_path.lower() or needle_l in track.title.lower()
 

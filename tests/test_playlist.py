@@ -79,3 +79,18 @@ def test_render_walks_up_outside_subtree(tmp_path: Path) -> None:
     tracks: list[tuple[str, str, float]] = [(str(tmp_path / "song.mp3"), "song", 10.0)]
     doc = render_m3u8(tracks, root=tmp_path, out_path=tmp_path / "elsewhere" / "sub" / "q.m3u8")
     assert doc == "#EXTM3U\n#EXTINF:10,song\n../../song.mp3\n"
+
+
+def test_render_walks_up_across_trees(tmp_path: Path) -> None:
+    """Playlist dir on a sibling tree resolves via ../ chains (walk_up=True).
+
+    On POSIX all paths share the filesystem root, so walk-up can always build a
+    relative path; render_m3u8's ValueError fallback exists only for exotic
+    filesystems (cross-volume Windows drives, unresolvable paths).
+    """
+    lib = tmp_path / "lib"
+    track = lib / "artist/song.mp3"
+    doc = render_m3u8([(str(track), "song", 10.0)], root=lib, out_path=tmp_path / "elsewhere" / "q.m3u8")
+    rel_line = doc.splitlines()[2]
+    assert not Path(rel_line).is_absolute()
+    assert (tmp_path / "elsewhere" / rel_line).resolve() == track.resolve()

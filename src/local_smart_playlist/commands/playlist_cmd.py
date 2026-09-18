@@ -16,6 +16,7 @@ from local_smart_playlist.query.vocab_cal import (
 )
 
 PREVIEW_COUNT = 10
+PLAY_DEFAULT_ALPHA = 0.7  # peak-window weight default for --seed-track ranking
 
 
 class PlayArgs:
@@ -53,6 +54,8 @@ class PlayArgs:
                     store, seed.mean_vec, k=n if n is not None else store.track_count(), exclude=exclude, alpha=alpha
                 )
             else:
+                if alpha != PLAY_DEFAULT_ALPHA:
+                    print("note: --alpha ignored (applies only with --seed-track)")  # noqa: T201 — CLI output
                 adapted = query
                 if llm:
                     try:
@@ -71,13 +74,17 @@ class PlayArgs:
                     exclude=exclude,
                 )
 
+        cutoff = max(VOCAB_SCORE_FLOOR, min_score)
         if len(ranked) > 0:
             # Calibrated score is absolute: 0.5 = query fits as well as a typical
             # caption (neutral), 0.9+ = clearly on-mood. No best-relative cutoff.
-            cutoff = max(VOCAB_SCORE_FLOOR, min_score)
             ranked = [(t, s) for t, s in ranked if s >= cutoff]
         if len(ranked) == 0:
-            raise SystemExit("no tracks passed the score cutoff; lower --min-score")
+            raise SystemExit(
+                f"no tracks passed the cutoff (effective {cutoff:.2f} = max({VOCAB_SCORE_FLOOR}, "
+                f"--min-score {min_score:.2f})); scores below {VOCAB_SCORE_FLOOR} are below "
+                "neutral by construction — lower --min-score toward 0.5 or refine the query"
+            )
 
         root = Path(library_root) if library_root is not None else Path.cwd()
         entries: list[tuple[Path, str, float, float]] = [

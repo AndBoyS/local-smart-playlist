@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_texts
-from local_smart_playlist.index.store import Store, TrackRow
+from local_smart_playlist.index.store import Store, TrackMeta
 from local_smart_playlist.query.contrast import baseline_vector, query_vector_contrast
 from local_smart_playlist.query.prompts import caption_vocab
 from local_smart_playlist.query.vocab_cal import (
@@ -27,7 +27,7 @@ PROBES: dict[str, list[str]] = {
 PREVIEW_COUNT = 8
 
 
-def _matches(track: TrackRow, needle: str) -> bool:
+def _matches(track: TrackMeta, needle: str) -> bool:
     needle_l = needle.lower()
     return needle_l in track.rel_path.lower() or needle_l in track.title.lower()
 

@@ -25,7 +25,7 @@ from dataclasses import dataclass
 import numpy as np
 from shape_extensions import IntVar
 
-from local_smart_playlist.index.store import Store, TrackRow
+from local_smart_playlist.index.store import Store, TrackMeta
 from local_smart_playlist.query.search import TextEmbedder
 
 W = IntVar("W")  # window count
@@ -126,7 +126,7 @@ def rank_by_contrast(
     baseline_vec: np.ndarray[[D]],
     k: int,
     exclude: set[str] | None = None,
-) -> list[tuple[TrackRow, float]]:
+) -> list[tuple[TrackMeta, float]]:
     """Rank every indexed track by sustained-mood contrast; returns top *k*.
 
     Score = median over the track's windows of (cos(window, query) −
@@ -138,18 +138,15 @@ def rank_by_contrast(
     bvec = np.asarray(baseline_vec, dtype=np.float32).ravel()
     windows = store.load_windows(store.track_rel_paths())
 
-    scored: list[tuple[TrackRow, float, float, str]] = []
-    for rel_path in store.track_rel_paths():
-        if rel_path in excluded:
+    scored: list[tuple[TrackMeta, float, float, str]] = []
+    for track in store.track_meta():
+        if track.rel_path in excluded:
             continue
-        track = store.get_track(rel_path)
-        if track is None:
-            continue
-        window_vecs = windows.get(rel_path)
+        window_vecs = windows.get(track.rel_path)
         if window_vecs is None or window_vecs.shape[0] == 0:
             continue  # track without stored windows must be re-indexed
         result = contrast_score(window_vecs, query_vec=qvec, baseline_vec=bvec)
-        scored.append((track, result.median_margin, result.coverage, rel_path))
+        scored.append((track, result.median_margin, result.coverage, track.rel_path))
 
     scored.sort(key=lambda entry: (-entry[1], -entry[2], entry[3]))
     return [(track, margin) for track, margin, _coverage, _rel in scored[:k]]

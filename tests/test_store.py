@@ -160,3 +160,14 @@ def test_windows_roundtrip_and_prune(tmp_path: Path) -> None:
     store.add_windows(rel_path="a.mp3", window_vecs=np.stack([basis_vec(0)]))
     _removed = store.prune_missing({"b.mp3"})
     assert store.window_count() == 0
+
+
+def test_track_meta_without_vectors(store: Store) -> None:
+    """track_meta returns identity/duration only — one query, no BLOB reads."""
+    upsert(store, "a/b.mp3", 1)
+    upsert(store, "c.mp3", 2)
+    metas = store.track_meta()
+    assert {m.rel_path for m in metas} == {"a/b.mp3", "c.mp3"}
+    for m in metas:
+        assert m.duration == pytest.approx(60.0)
+        assert m.title == m.rel_path

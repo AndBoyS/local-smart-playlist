@@ -15,7 +15,7 @@ from local_smart_playlist.audio import decode
 from local_smart_playlist.audio.windowing import slice_windows
 from local_smart_playlist.config import default_db_path
 from local_smart_playlist.embed.aggregate import aggregate
-from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_windows
+from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_windows, load_model
 from local_smart_playlist.index.library import discover_audio, display_title, relative_posix
 from local_smart_playlist.index.store import Store
 
@@ -40,6 +40,10 @@ class IndexArgs:
             store.set_meta("library_root", str(root))
             store.set_meta("model", MODEL_ID)
             todo_paths = [p for p in files if rescan or not store.has_track(relative_posix(root, p))]
+
+            # Fail fast on model loading (download/device problems) instead of
+            # recording every track as a failure below.
+            _ = load_model()
 
             with Progress(
                 TextColumn("{task.description}"),
@@ -74,6 +78,8 @@ class IndexArgs:
                         )
                         store.add_windows(rel_path=rel, window_vecs=window_vecs)
                     except decode.DecodeError as exc:
+                        store.record_failure(rel_path=rel, error=str(exc), now=now)
+                    except Exception as exc:  # noqa: BLE001 — one bad track must not abort a full index run
                         store.record_failure(rel_path=rel, error=str(exc), now=now)
                     _ = bar.advance(task, 1)
             _ = store.prune_missing({relative_posix(root, p) for p in files})

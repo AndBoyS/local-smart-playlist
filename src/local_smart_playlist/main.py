@@ -32,7 +32,7 @@ class PlayArgs(tap.TypedArgs):
         default=None, metavar="PATH", help="Use a track's vector as the query instead of text"
     )
     alpha: float = tap.arg(
-        default=0.7,
+        default=playlist_cmd.PLAY_DEFAULT_ALPHA,
         help="Peak-window weight for --seed-track ranking (0 = mean only, 1 = peak only); ignored for text queries",
     )
     min_score: float = tap.arg(

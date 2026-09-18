@@ -27,11 +27,16 @@ def render_m3u8(tracks: list[tuple[str, str, float]], *, root: Path, out_path: P
 
     *tracks* is a list of (abs_or_rel_path, title, duration_seconds). Paths are
     written relative to the playlist file's directory so playlists stay portable
-    across synced copies of the library tree.
+    across synced copies of the library tree. When the playlist lives outside
+    the library tree (different root/volume) a relative path is impossible, so
+    the track's resolved absolute path is written instead — still a valid m3u8.
     """
     lines = ["#EXTM3U"]
     for track_path, title, duration in tracks:
-        rel = Path(track_path).resolve().relative_to(out_path.parent.resolve(), walk_up=True).as_posix()
+        try:
+            rel = Path(track_path).resolve().relative_to(out_path.parent.resolve(), walk_up=True).as_posix()
+        except ValueError:
+            rel = Path(track_path).resolve().as_posix()
         lines.append(f"#EXTINF:{duration:.0f},{title}")
         lines.append(rel)
     return "\n".join(lines) + "\n"

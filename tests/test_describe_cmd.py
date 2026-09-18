@@ -1,12 +1,16 @@
 """`sp describe` tests: caption ranking, path resolution, CLI arg errors."""
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
 
 from local_smart_playlist.commands import describe_cmd
+from local_smart_playlist.embed.model import MuLanEmbedder
+
+if TYPE_CHECKING:
+    import torch
 from local_smart_playlist.index.store import Store
 from local_smart_playlist.query import prompts
 
@@ -19,21 +23,31 @@ def basis(i: int) -> np.ndarray:
     return v
 
 
-def fake_embed_texts(texts: list[str]) -> np.ndarray:
-    """Deterministic: 'caption A' -> e0, 'caption B' -> e1, other -> hashed basis vector."""
-    out = np.empty((len(texts), DIM), dtype=np.float32)
-    for i, text in enumerate(texts):
-        if text == "caption A":
-            out[i] = basis(0)  # pyrefly: ignore[unsupported-operation]
-        elif text == "caption B":
-            out[i] = basis(1)  # pyrefly: ignore[unsupported-operation]
-        elif text == "caption C":
-            out[i] = basis(2)  # pyrefly: ignore[unsupported-operation]
-        else:
-            v = np.zeros(DIM, dtype=np.float32)
-            v[sum(ord(c) for c in text) % DIM] = 1.0  # pyrefly: ignore[unsupported-operation]
-            out[i] = v  # pyrefly: ignore[unsupported-operation]
-    return out
+class _FakeTextModel:
+    """MuQMuLan stand-in: 'caption A' -> e0, 'caption B' -> e1, 'caption C' -> e2, other -> hashed basis."""
+
+    def __call__(self, texts: list[str]) -> "torch.Tensor":
+        """Deterministic basis vectors."""
+        out = np.empty((len(texts), DIM), dtype=np.float32)
+        for i, text in enumerate(texts):
+            if text == "caption A":
+                out[i] = basis(0)  # pyrefly: ignore[unsupported-operation]
+            elif text == "caption B":
+                out[i] = basis(1)  # pyrefly: ignore[unsupported-operation]
+            elif text == "caption C":
+                out[i] = basis(2)  # pyrefly: ignore[unsupported-operation]
+            else:
+                v = np.zeros(DIM, dtype=np.float32)
+                v[sum(ord(c) for c in text) % DIM] = 1.0  # pyrefly: ignore[unsupported-operation]
+                out[i] = v  # pyrefly: ignore[unsupported-operation]
+        import torch
+
+        return torch.from_numpy(out)
+
+
+def fake_embedder() -> MuLanEmbedder[8]:
+    """MuLanEmbedder bound to the fake model; dim matches the fake store's embed_dim."""
+    return MuLanEmbedder(_FakeTextModel(), dim=DIM)
 
 
 def fake_store(db: Path) -> Store:
@@ -54,20 +68,18 @@ def upsert_track(store: Store, rel_path: str, mean_vec: np.ndarray) -> None:
     )
 
 
-def test_rank_captions_orders_by_similarity(monkeypatch: Any) -> None:
-    monkeypatch.setattr(describe_cmd, "embed_texts", fake_embed_texts)
+def test_rank_captions_orders_by_similarity() -> None:
     vocab = ["caption C", "caption B", "caption A"]
     mean = basis(0) + 0.5 * basis(1)
     mean = (mean / float(np.linalg.norm(mean))).astype(np.float32)
-    ranked = describe_cmd.rank_captions(mean, vocab, top_n=2)
+    ranked = describe_cmd.rank_captions(fake_embedder(), mean_vec=mean, vocab=vocab, top_n=2)
     assert ranked[0] == ("caption A", pytest.approx(0.8944, abs=1e-3))
     assert ranked[1][0] == "caption B"
 
 
-def test_rank_captions_respects_top_n(monkeypatch: Any) -> None:
-    monkeypatch.setattr(describe_cmd, "embed_texts", fake_embed_texts)
+def test_rank_captions_respects_top_n() -> None:
     vocab = ["caption A", "caption B"]
-    ranked = describe_cmd.rank_captions(basis(1), vocab, top_n=1)
+    ranked = describe_cmd.rank_captions(fake_embedder(), mean_vec=basis(1), vocab=vocab, top_n=1)
     assert ranked == [("caption B", 1.0)]
 
 
@@ -101,7 +113,7 @@ def test_run_no_library_root(tmp_path: Path) -> None:
 
 
 def test_run_track_not_in_index(monkeypatch: Any, tmp_path: Path) -> None:
-    monkeypatch.setattr(describe_cmd, "embed_texts", fake_embed_texts)
+    monkeypatch.setattr(describe_cmd, "load_model", fake_embedder)
     monkeypatch.setattr(describe_cmd, "Store", fake_store)
     root = tmp_path / "lib"
     root.mkdir()
@@ -114,7 +126,7 @@ def test_run_track_not_in_index(monkeypatch: Any, tmp_path: Path) -> None:
 
 
 def test_run_describes_track(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
-    monkeypatch.setattr(describe_cmd, "embed_texts", fake_embed_texts)
+    monkeypatch.setattr(describe_cmd, "load_model", fake_embedder)
     monkeypatch.setattr(describe_cmd, "Store", fake_store)
     root = tmp_path / "lib"
     root.mkdir()

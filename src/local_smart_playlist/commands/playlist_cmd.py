@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from local_smart_playlist.config import default_db_path, default_playlist_dir
-from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_texts
+from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
 from local_smart_playlist.index.store import Store
 from local_smart_playlist.query.contrast import baseline_vector, query_vector_contrast
 from local_smart_playlist.query.playlist import playlist_path, write_playlist
@@ -62,9 +62,10 @@ class PlayArgs:
                         adapted = adapt_mood(query)
                     except LlmError:
                         adapted = query  # offline fallback: embed the raw phrase
-                qvec = query_vector_contrast(adapted, embed_texts)
-                bvec = baseline_vector(embed_texts)
-                vocab_vecs = vocab_vector_bank(embed_texts, caption_vocab())
+                model = load_model()
+                qvec = query_vector_contrast(adapted, model)
+                bvec = baseline_vector(model)
+                vocab_vecs = vocab_vector_bank(model, caption_vocab())
                 ranked = rank_by_vocab_calibration(
                     store,
                     query_vec=qvec,

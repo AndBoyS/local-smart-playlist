@@ -12,8 +12,12 @@ from local_smart_playlist.index.store import Store
 DIM = 512  # Store's default embed_dim; fake embedder must match
 
 
-def _fake_embed(windows: list[np.ndarray], *, batch_size: int = 16) -> np.ndarray:
-    return np.ones((len(windows), DIM), dtype=np.float32) / DIM
+class _FakeEmbedder:
+    """MuLanEmbedder stand-in: embed_windows -> ones/DIM rows."""
+
+    def embed_windows(self, windows: list[np.ndarray], *, batch_size: int = 16) -> np.ndarray:
+        return np.ones((len(windows), DIM), dtype=np.float32) / DIM
+
 
 
 @pytest.fixture
@@ -38,9 +42,8 @@ def test_index_survives_non_decode_failure(
         return real_decode(path)
 
     monkeypatch.setattr(index_cmd.decode, "decode_mono", fake_decode)
-    monkeypatch.setattr(index_cmd, "load_model", lambda: None)
+    monkeypatch.setattr(index_cmd, "load_model", _FakeEmbedder)
     monkeypatch.setattr(index_cmd, "cap_torch_threads", lambda: None)
-    monkeypatch.setattr(index_cmd, "embed_windows", _fake_embed)
 
     db = tmp_path / "idx.db"
     index_cmd.IndexArgs.run(root=tmp_path, db=db, rescan=False, quiet=True)

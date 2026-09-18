@@ -29,8 +29,8 @@ from dataclasses import dataclass
 import numpy as np
 from shape_extensions import IntVar
 
+from local_smart_playlist.embed.model import MuLanEmbedder
 from local_smart_playlist.index.store import Store, TrackMeta
-from local_smart_playlist.query.search import TextEmbedder
 
 W = IntVar("W")  # window count
 D = IntVar("D")  # embedding dim
@@ -51,9 +51,9 @@ MARGIN_TAU = 0.05
 NEUTRAL = 0.5
 
 
-def vocab_vector_bank(embedder: TextEmbedder, vocab: list[str]) -> np.ndarray[[V, D]]:
+def vocab_vector_bank(model: MuLanEmbedder[D], vocab: list[str]) -> np.ndarray[[V, D]]:
     """Unit-norm embeddings of the caption vocabulary, one row per caption."""
-    vecs = np.asarray(embedder(vocab), dtype=np.float32)
+    vecs = np.asarray(model.embed_texts(vocab), dtype=np.float32)
     norms = np.linalg.norm(vecs, axis=-1, keepdims=True)
     safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore[unknown-argument-type]
     return vecs / safe
@@ -100,9 +100,9 @@ def vocab_calibration_score(
 def rank_by_vocab_calibration(
     store: Store,
     *,
-    query_vec: np.ndarray,
-    vocab_vecs: np.ndarray,
-    margin_vec: np.ndarray,
+    query_vec: np.ndarray[[D]],
+    vocab_vecs: np.ndarray[[V, D]],
+    margin_vec: np.ndarray[[D]],
     k: int,
     exclude: set[str] | None = None,
 ) -> list[tuple[TrackMeta, float]]:

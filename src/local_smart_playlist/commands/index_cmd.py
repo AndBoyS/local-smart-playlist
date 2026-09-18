@@ -15,7 +15,7 @@ from local_smart_playlist.audio import decode
 from local_smart_playlist.audio.windowing import slice_windows
 from local_smart_playlist.config import default_db_path
 from local_smart_playlist.embed.aggregate import aggregate
-from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_windows, load_model
+from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
 from local_smart_playlist.index.library import discover_audio, display_title, relative_posix
 from local_smart_playlist.index.store import Store
 
@@ -43,7 +43,7 @@ class IndexArgs:
 
             # Fail fast on model loading (download/device problems) instead of
             # recording every track as a failure below.
-            _ = load_model()
+            model = load_model()
 
             with Progress(
                 TextColumn("{task.description}"),
@@ -64,7 +64,7 @@ class IndexArgs:
                             store.record_failure(rel_path=rel, error="no usable windows (too short or silent)", now=now)
                             _ = bar.advance(task, 1)
                             continue
-                        window_vecs = embed_windows(windows)
+                        window_vecs = model.embed_windows(windows)
                         mean_vec, p90_vec = aggregate(window_vecs)
                         store.upsert(
                             rel_path=rel,

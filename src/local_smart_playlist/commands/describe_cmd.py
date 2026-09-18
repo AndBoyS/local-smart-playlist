@@ -8,12 +8,10 @@ from rich.table import Table
 from shape_extensions import IntVar
 
 from local_smart_playlist.config import default_db_path
-from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_texts
+from local_smart_playlist.embed.model import MODEL_ID, MuLanEmbedder, cap_torch_threads, load_model
 from local_smart_playlist.index.store import Store
 from local_smart_playlist.query import prompts
 from local_smart_playlist.query.phrases import track_documents
-
-D = IntVar("D")  # embedding dim
 
 DEFAULT_TOP_N = 10
 
@@ -34,9 +32,11 @@ def resolve_rel_path(raw: str, root: Path) -> str:
         return Path(raw).expanduser().as_posix()
 
 
-def rank_captions(mean_vec: np.ndarray[[D]], vocab: list[str], *, top_n: int) -> list[tuple[str, float]]:
+def rank_captions[
+    M: IntVar
+](model: MuLanEmbedder[M], *, mean_vec: np.ndarray[[M]], vocab: list[str], top_n: int) -> list[tuple[str, float]]:
     """Top captions by cosine similarity between the unit-norm track mean vector and vocab embeddings."""
-    docs = track_documents(mean_vec, embed_texts(vocab), top_n=top_n)
+    docs = track_documents(mean_vec, model.embed_texts(vocab), top_n=top_n)
     return [(vocab[i], sim) for i, sim in docs]
 
 
@@ -62,7 +62,8 @@ class DescribeArgs:
             track = store.get_track(rel_path)
             if track is None:
                 raise SystemExit(f"track not in index: {path}")
-            captions = rank_captions(track.mean_vec, prompts.caption_vocab(), top_n=n)
+            model = load_model()
+            captions = rank_captions(model, mean_vec=track.mean_vec, vocab=prompts.caption_vocab(), top_n=n)
 
         rprint(f"[bold]{track.title}[/bold]  {track.duration:.1f}s  {track.n_windows} windows  {rel_path}")
         table = Table(title="caption-vocab neighbors")

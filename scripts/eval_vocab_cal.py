@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_texts
+from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
 from local_smart_playlist.index.store import Store, TrackMeta
 from local_smart_playlist.query.contrast import baseline_vector, query_vector_contrast
 from local_smart_playlist.query.prompts import caption_vocab
@@ -46,12 +46,13 @@ def main() -> None:
     vocab = caption_vocab()
     with Store(args.db) as store:
         store.require_model(MODEL_ID)
-        vocab_vecs = vocab_vector_bank(embed_texts, vocab)
+        model = load_model()
+        vocab_vecs = vocab_vector_bank(model, vocab)
         print(f"# db={args.db}  vocab={len(vocab)}  cover-floor={VOCAB_COVER_FLOOR}")
 
         for query, exemplars in probes.items():
-            qvec = query_vector_contrast(query, embed_texts)
-            bvec = baseline_vector(embed_texts)
+            qvec = query_vector_contrast(query, model)
+            bvec = baseline_vector(model)
             ranked = rank_by_vocab_calibration(
                 store, query_vec=qvec, vocab_vecs=vocab_vecs, margin_vec=bvec, k=store.track_count()
             )

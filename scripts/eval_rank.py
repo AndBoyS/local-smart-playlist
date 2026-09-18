@@ -13,7 +13,7 @@ Usage:
 import argparse
 from pathlib import Path
 
-from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_texts
+from local_smart_playlist.embed.model import MODEL_ID, MuLanEmbedder, cap_torch_threads, load_model
 from local_smart_playlist.index.store import Store, TrackMeta
 from local_smart_playlist.query.contrast import (
     baseline_vector,
@@ -32,10 +32,10 @@ PREVIEW_COUNT = 5
 PERCENTILE_SCALE = 100.0
 
 
-def rank_full(store: Store, query: str) -> list[tuple[TrackMeta, float]]:
+def rank_full(store: Store, model: MuLanEmbedder[512], *, query: str) -> list[tuple[TrackMeta, float]]:
     """Full-library sustained-mood ranking with the production ranker."""
-    qvec = query_vector_contrast(query, embed_texts)
-    bvec = baseline_vector(embed_texts)
+    qvec = query_vector_contrast(query, model)
+    bvec = baseline_vector(model)
     return rank_by_contrast(store, query_vec=qvec, baseline_vec=bvec, k=store.track_count())
 
 
@@ -85,9 +85,10 @@ def main() -> None:
         probes = PROBES
     with Store(db_path) as store:
         store.require_model(MODEL_ID)
+        model = load_model()
         print(f"# db={db_path}")
         for query, exemplars in probes.items():
-            ranked = rank_full(store, query)
+            ranked = rank_full(store, model, query=query)
             report(ranked, query=query, exemplars=exemplars)
 
 

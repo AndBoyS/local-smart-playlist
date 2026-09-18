@@ -1,13 +1,17 @@
 """Vocab-calibration ranker tests: percentiles, guard fallback, ranking order."""
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 
+if TYPE_CHECKING:
+    import torch
+
+from local_smart_playlist.embed.model import MuLanEmbedder
 from local_smart_playlist.index.store import Store
 from local_smart_playlist.query.contrast import baseline_vector
-from local_smart_playlist.query.search import TextEmbedder
 from local_smart_playlist.query.vocab_cal import (
     MARGIN_TAU,
     rank_by_vocab_calibration,
@@ -33,11 +37,22 @@ def fake_embedder(texts: list[str]) -> np.ndarray:
     return out
 
 
-def _embedder_for(mapping: dict[str, int]) -> TextEmbedder:
-    def embed(texts: list[str]) -> np.ndarray:
-        return np.stack([basis(mapping[t]) for t in texts])
+def _torch_model(texts: list[str]) -> "torch.Tensor":
+    import torch
 
-    return embed
+    return torch.from_numpy(fake_embedder(texts))
+
+
+def _embedder_for(mapping: dict[str, int]) -> MuLanEmbedder[32]:
+    """MuLanEmbedder wrapping the hashed-basis model: text -> basis[mapping[text]]."""
+
+    class _Model:
+        def __call__(self, texts: list[str]) -> "torch.Tensor":
+            import torch
+
+            return torch.from_numpy(np.stack([basis(mapping[t]) for t in texts]))
+
+    return MuLanEmbedder(_Model(), dim=DIM)
 
 
 def upsert_track(store: Store, rel_path: str, window_vecs: np.ndarray) -> None:
@@ -152,6 +167,6 @@ def test_rank_respects_k_and_exclude() -> None:
 
 def test_real_embedder_paths_run() -> None:
     """baseline_vector + hashed embedder compose: guard fallback path is reachable."""
-    embedder = fake_embedder
+    embedder = MuLanEmbedder(_torch_model, dim=DIM)
     bvec = baseline_vector(embedder, anchors=["x", "y"])
     assert bvec.shape == (DIM,)

@@ -25,8 +25,8 @@ from dataclasses import dataclass
 import numpy as np
 from shape_extensions import IntVar
 
+from local_smart_playlist.embed.model import MuLanEmbedder
 from local_smart_playlist.index.store import Store, TrackMeta
-from local_smart_playlist.query.search import TextEmbedder
 
 W = IntVar("W")  # window count
 D = IntVar("D")  # embedding dim
@@ -65,7 +65,7 @@ def _unit(vecs: np.ndarray[[B, D]]) -> np.ndarray[[B, D]]:
     return vecs / safe
 
 
-def baseline_vector(embedder: TextEmbedder, *, anchors: list[str] | None = None) -> np.ndarray[[D]]:
+def baseline_vector(model: MuLanEmbedder[D], *, anchors: list[str] | None = None) -> np.ndarray[[D]]:
     """Unnormalized mean of unit broad-mood anchor embeddings.
 
     Kept unnormalized so ``window @ baseline`` equals the *mean of the
@@ -73,14 +73,14 @@ def baseline_vector(embedder: TextEmbedder, *, anchors: list[str] | None = None)
     centroid would inflate the baseline by 1/‖centroid‖ (~2–3x for a diverse
     anchor set) and bury gentle textures under the broad baseline.
     """
-    vecs = _unit(np.asarray(embedder(list(MOOD_ANCHORS if anchors is None else anchors)), dtype=np.float32))
+    vecs = _unit(np.asarray(model.embed_texts(list(MOOD_ANCHORS if anchors is None else anchors)), dtype=np.float32))
     return vecs.mean(axis=0)
 
 
-def query_vector_contrast(mood: str, embedder: TextEmbedder) -> np.ndarray[[D]]:
+def query_vector_contrast(mood: str, model: MuLanEmbedder[D]) -> np.ndarray[[D]]:
     """Embed *mood* as caption-style variants, averaged to one unit query vector."""
     variants = [mood, f"{mood} mood."]
-    vecs = _unit(np.asarray(embedder(variants), dtype=np.float32))
+    vecs = _unit(np.asarray(model.embed_texts(variants), dtype=np.float32))
     return _unit(vecs.mean(axis=0)[None, :])[0]
 
 

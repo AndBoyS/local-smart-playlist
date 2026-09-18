@@ -9,7 +9,7 @@ vocab bank replaces/extends the 20 mood anchors).
 import numpy as np
 
 from local_smart_playlist.config import default_db_path
-from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_texts
+from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
 from local_smart_playlist.index.store import Store
 from local_smart_playlist.query import prompts
 
@@ -19,7 +19,7 @@ WORST_COUNT = 20
 def main() -> None:
     cap_torch_threads()
     vocab = prompts.caption_vocab()
-    vocab_vecs = np.asarray(embed_texts(vocab), dtype=np.float32)  # (V, D)
+    vocab_vecs = np.asarray(load_model().embed_texts(vocab), dtype=np.float32)  # (V, D)
     with Store(default_db_path()) as store:
         store.require_model(MODEL_ID)
         rows = store.all_track_means()

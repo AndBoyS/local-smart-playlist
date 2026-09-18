@@ -11,6 +11,8 @@ import soxr
 from shape_extensions import IntVar
 
 N = IntVar("N")
+S = IntVar("S")  # sample count per channel
+C = IntVar("C")  # channel count
 
 TARGET_SR = 48_000
 
@@ -61,7 +63,7 @@ def decode_mono(path: Path) -> tuple[np.ndarray[[N]], float]:
     return mono, duration
 
 
-def _decode_torchaudio(path: Path) -> tuple[np.ndarray, int]:
+def _decode_torchaudio(path: Path) -> tuple[np.ndarray[[S, C]], int]:
     """Decode via torchaudio (torchcodec backend), falling back to the ffmpeg CLI."""
     try:
         import torchaudio
@@ -73,7 +75,7 @@ def _decode_torchaudio(path: Path) -> tuple[np.ndarray, int]:
         return _decode_ffmpeg_cli(path)
 
 
-def _decode_ffmpeg_cli(path: Path) -> tuple[np.ndarray, int]:
+def _decode_ffmpeg_cli(path: Path) -> tuple[np.ndarray[[S, C]], int]:
     """Decode to mono f32le via the ffmpeg binary (last resort)."""
     try:
         proc = subprocess.run(  # noqa: S603 — fixed argv

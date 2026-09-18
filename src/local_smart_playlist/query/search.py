@@ -1,7 +1,7 @@
 """Query embedding and ranking against the track store."""
 
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import cast
 
 import numpy as np
 from shape_extensions import IntVar
@@ -14,12 +14,6 @@ D = IntVar("D")  # embedding dim
 PEAK_WEIGHT = 0.7  # alpha: peak-window vs track-mean blend
 CANDIDATE_POOL = 10  # prefilter fetches k * this many candidates by track mean
 KNN_LIMIT = 4096  # sqlite-vec KNN k cap
-
-
-class TextEmbedder(Protocol):
-    """Anything that turns text into a unit-norm model vector."""
-
-    def __call__(self, texts: list[str]) -> np.ndarray: ...
 
 
 @dataclass(frozen=True)

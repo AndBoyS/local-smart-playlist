@@ -1,10 +1,12 @@
 """Contrast-ranker tests: margins, sustained scoring, ranking order, tiebreaks."""
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 
+from local_smart_playlist.embed.model import MuLanEmbedder
 from local_smart_playlist.index.store import Store
 from local_smart_playlist.query.contrast import (
     MOOD_ANCHORS,
@@ -13,7 +15,9 @@ from local_smart_playlist.query.contrast import (
     query_vector_contrast,
     rank_by_contrast,
 )
-from local_smart_playlist.query.search import TextEmbedder
+
+if TYPE_CHECKING:
+    import torch
 
 DIM = 32
 
@@ -32,11 +36,27 @@ def fake_embedder(texts: list[str]) -> np.ndarray:
     return out
 
 
-def _embedder_for(mapping: dict[str, int]) -> TextEmbedder:
-    def embed(texts: list[str]) -> np.ndarray:
-        return np.stack([basis(mapping[t]) for t in texts])
+def _embedder_for(mapping: dict[str, int]) -> MuLanEmbedder[32]:
+    """MuLanEmbedder wrapping the hashed-basis model: text -> basis[mapping[text]]."""
 
-    return embed
+    class _Model:
+        def __call__(self, texts: list[str]) -> "torch.Tensor":
+            import torch
+
+            return torch.from_numpy(np.stack([basis(mapping[t]) for t in texts]))
+
+    return MuLanEmbedder(_Model(), dim=DIM)
+
+
+def _torch_model(texts: list[str]) -> "torch.Tensor":
+    import torch
+
+    return torch.from_numpy(fake_embedder(texts))
+
+
+def _hash_embedder() -> MuLanEmbedder[32]:
+    """MuLanEmbedder wrapping :func:`fake_embedder`."""
+    return MuLanEmbedder(_torch_model, dim=DIM)
 
 
 def upsert_track(store: Store, rel_path: str, window_vecs: np.ndarray) -> None:
@@ -65,14 +85,14 @@ def test_mood_bank_covers_broad_moods() -> None:
 
 def test_baseline_is_mean_of_anchor_affinities() -> None:
     """Baseline stays unnormalized: window @ baseline == mean of per-anchor cosines."""
-    bvec = baseline_vector(fake_embedder)
+    bvec = baseline_vector(_hash_embedder())
     anchor_vecs = np.asarray(fake_embedder(list(MOOD_ANCHORS)), dtype=np.float64)
     anchor_vecs = anchor_vecs / np.linalg.norm(anchor_vecs, axis=-1, keepdims=True)
     anchor_mean = np.asarray(anchor_vecs.mean(axis=0), dtype=np.float64)  # pyrefly: ignore[unknown-argument-type]
     assert np.allclose(bvec, anchor_mean, atol=1e-6)
     # centroid of a diverse bank is shorter than 1 — that is the point
     assert np.linalg.norm(bvec) < 0.9
-    qvec = query_vector_contrast("dreamy", fake_embedder)
+    qvec = query_vector_contrast("dreamy", _hash_embedder())
     assert np.allclose(np.linalg.norm(qvec), 1.0, atol=1e-5)
     # averaging {dreamy, "dreamy mood."} with a hashed-basis embedder yields the
     # plain first-basis projection of both variants

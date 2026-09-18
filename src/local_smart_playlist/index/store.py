@@ -50,11 +50,11 @@ def now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def _serialize(vec: np.ndarray) -> bytes:
+def _serialize(vec: np.ndarray[[D]]) -> bytes:
     return sqlite_vec.serialize_float32(np.ascontiguousarray(vec, dtype=np.float32).tolist())
 
 
-def _deserialize(blob: bytes, dim: int) -> np.ndarray:
+def _deserialize(blob: bytes, dim: int) -> np.ndarray[[D]]:
     arr = np.frombuffer(blob, dtype=np.float32)
     if arr.size != dim:
         msg = f"vector size mismatch: {arr.size} != {dim}"

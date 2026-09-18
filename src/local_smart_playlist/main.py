@@ -33,7 +33,7 @@ class PlayArgs(tap.TypedArgs):
     )
     alpha: float = tap.arg(
         default=0.7,
-        help="Peak-window weight for --seed-track ranking (0 = mean only, 1 = peak only); text queries rank by document relevance",
+        help="Peak-window weight for --seed-track ranking (0 = mean only, 1 = peak only); ignored for text queries",
     )
     min_score: float = tap.arg(
         default=0.6,

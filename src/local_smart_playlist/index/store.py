@@ -33,12 +33,6 @@ CREATE TABLE IF NOT EXISTS windows (
     vec BLOB NOT NULL,
     PRIMARY KEY (rel_path, window_idx)
 );
-CREATE TABLE IF NOT EXISTS documents (
-    rel_path TEXT NOT NULL REFERENCES tracks(rel_path) ON DELETE CASCADE,
-    phrase_idx INTEGER NOT NULL,
-    sim REAL NOT NULL,
-    PRIMARY KEY (rel_path, phrase_idx)
-);
 CREATE TABLE IF NOT EXISTS failures (
     rel_path TEXT PRIMARY KEY,
     error TEXT NOT NULL,
@@ -203,7 +197,6 @@ class Store:
             (rel_path, _serialize(mean_vec)),
         )
         _ = self._conn.execute("DELETE FROM windows WHERE rel_path = ?", (rel_path,))
-        _ = self._conn.execute("DELETE FROM documents WHERE rel_path = ?", (rel_path,))
         _ = self._conn.execute("DELETE FROM failures WHERE rel_path = ?", (rel_path,))
         self._conn.commit()
 
@@ -255,7 +248,6 @@ class Store:
         failures = self._conn.execute("SELECT rel_path FROM failures").fetchall()
         fstale = [cast("str", r[0]) for r in failures if cast("str", r[0]) not in valid]
         _ = self._conn.executemany("DELETE FROM windows WHERE rel_path = ?", [(p,) for p in stale])
-        _ = self._conn.executemany("DELETE FROM documents WHERE rel_path = ?", [(p,) for p in stale])
         _ = self._conn.executemany("DELETE FROM tracks WHERE rel_path = ?", [(p,) for p in stale])
         _ = self._conn.executemany("DELETE FROM tracks_vec WHERE rel_path = ?", [(p,) for p in stale])
         _ = self._conn.executemany("DELETE FROM failures WHERE rel_path = ?", [(p,) for p in fstale])
@@ -293,35 +285,6 @@ class Store:
         """Every indexed rel_path."""
         rows = self._conn.execute("SELECT rel_path FROM tracks").fetchall()
         return {cast("str", r[0]) for r in rows}
-
-    def set_documents(self, rel_path: str, docs: list[tuple[int, float]]) -> None:
-        """Replace this track's phrase documents with (vocab_index, sim) pairs."""
-        _ = self._conn.execute("DELETE FROM documents WHERE rel_path = ?", (rel_path,))
-        _ = self._conn.executemany(
-            "INSERT OR REPLACE INTO documents(rel_path, phrase_idx, sim) VALUES (?, ?, ?)",
-            [(rel_path, i, float(s)) for i, s in docs],
-        )
-        self._conn.commit()
-
-    def tracks_with_documents(self) -> set[str]:
-        """rel_paths that have at least one stored phrase document."""
-        rows = self._conn.execute("SELECT DISTINCT rel_path FROM documents").fetchall()
-        return {cast("str", r[0]) for r in rows}
-
-    def all_documents(self) -> dict[str, list[tuple[int, float]]]:
-        """Vocab indices + sims of each track's phrase documents, best-sim first."""
-        rows = self._conn.execute(
-            "SELECT rel_path, phrase_idx, sim FROM documents ORDER BY rel_path, sim DESC"
-        ).fetchall()
-        out: dict[str, list[tuple[int, float]]] = {}
-        for rel, idx, sim in rows:
-            out.setdefault(cast("str", rel), []).append((cast("int", idx), cast("float", sim)))
-        return out
-
-    def clear_documents(self) -> None:
-        """Drop all phrase documents (e.g. when the readout vocabulary changes)."""
-        _ = self._conn.execute("DELETE FROM documents")
-        self._conn.commit()
 
     def knn(self, *, query_vec: np.ndarray, k: int) -> list[KnnHit]:
         """Nearest tracks by cosine distance on the mean vector."""

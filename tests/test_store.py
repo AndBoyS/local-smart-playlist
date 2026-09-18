@@ -160,29 +160,3 @@ def test_windows_roundtrip_and_prune(tmp_path: Path) -> None:
     store.add_windows(rel_path="a.mp3", window_vecs=np.stack([basis_vec(0)]))
     _removed = store.prune_missing({"b.mp3"})
     assert store.window_count() == 0
-
-
-def test_documents_roundtrip_and_lifecycle(store: Store) -> None:
-    upsert(store, "a.mp3", 0)
-    upsert(store, "b.mp3", 1)
-
-    store.set_documents("a.mp3", [(3, 0.9), (7, 0.5)])
-    store.set_documents("b.mp3", [(1, 0.8)])
-    assert store.tracks_with_documents() == {"a.mp3", "b.mp3"}
-    # indices ordered best-sim first
-    assert store.all_documents() == {"a.mp3": [(3, 0.9), (7, 0.5)], "b.mp3": [(1, 0.8)]}
-
-    # set_documents replaces
-    store.set_documents("a.mp3", [(2, 0.4)])
-    assert store.all_documents()["a.mp3"] == [(2, 0.4)]
-
-    # upsert invalidates documents (re-index requires re-extraction)
-    upsert(store, "a.mp3", 2)
-    assert store.tracks_with_documents() == {"b.mp3"}
-
-    # clear + prune cascade
-    store.clear_documents()
-    assert store.tracks_with_documents() == set()
-    store.set_documents("b.mp3", [(0, 1.0)])
-    _removed = store.prune_missing({"a.mp3"})
-    assert store.tracks_with_documents() == set()

@@ -15,10 +15,9 @@ from local_smart_playlist.audio import decode
 from local_smart_playlist.audio.windowing import slice_windows
 from local_smart_playlist.config import default_db_path
 from local_smart_playlist.embed.aggregate import aggregate
-from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_texts, embed_windows
+from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_windows
 from local_smart_playlist.index.library import discover_audio, display_title, relative_posix
 from local_smart_playlist.index.store import Store
-from local_smart_playlist.query import phrases
 
 
 class IndexArgs:
@@ -78,7 +77,6 @@ class IndexArgs:
                         store.record_failure(rel_path=rel, error=str(exc), now=now)
                     _ = bar.advance(task, 1)
             _ = store.prune_missing({relative_posix(root, p) for p in files})
-            _ = phrases.ensure_documents(store, embed_texts)
 
             indexed = store.track_count()
             failed = store.failure_count()

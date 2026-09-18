@@ -3,7 +3,6 @@
 import logging
 import os
 import time
-from collections.abc import Sequence
 from importlib import resources
 from typing import Any, cast
 
@@ -94,8 +93,3 @@ def adapt_mood(mood: str) -> str:
     elapsed_ms = (time.perf_counter() - started) * 1000.0
     logger.info("llm adapt: %r -> %r (%s, %.0f ms)", mood, lines[0], model, elapsed_ms)
     return lines[0]
-
-
-def fallback_prompts(mood: str) -> Sequence[str]:
-    """Deterministic offline expansion used when --llm is off."""
-    return [mood]

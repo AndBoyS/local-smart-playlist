@@ -5,11 +5,15 @@ from pathlib import Path
 from local_smart_playlist.config import default_db_path, default_playlist_dir
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_texts
 from local_smart_playlist.index.store import Store
-from local_smart_playlist.query import phrases
-from local_smart_playlist.query.phrases import rank_by_documents
+from local_smart_playlist.query.contrast import (
+    CONTRAST_SCORE_FLOOR,
+    baseline_vector,
+    query_vector_contrast,
+    rank_by_contrast,
+)
 from local_smart_playlist.query.playlist import playlist_path, write_playlist
 from local_smart_playlist.query.prompts import LlmError, adapt_mood
-from local_smart_playlist.query.search import ABS_SCORE_FLOOR, query_vector, rank_by_similarity
+from local_smart_playlist.query.search import rank_by_similarity
 
 PREVIEW_COUNT = 10
 
@@ -55,19 +59,19 @@ class PlayArgs:
                         adapted = adapt_mood(query)
                     except LlmError:
                         adapted = query  # offline fallback: embed the raw phrase
-                qvec = query_vector(adapted, embed_texts)
-                vocab_vecs = phrases.ensure_documents(store, embed_texts)
-                ranked = rank_by_documents(
+                qvec = query_vector_contrast(adapted, embed_texts)
+                bvec = baseline_vector(embed_texts)
+                ranked = rank_by_contrast(
                     store,
                     query_vec=qvec,
-                    vocab_vecs=vocab_vecs,
+                    baseline_vec=bvec,
                     k=n if n is not None else store.track_count(),
                     exclude=exclude,
                 )
 
         if len(ranked) > 0:
             best = ranked[0][1]
-            cutoff = max(ABS_SCORE_FLOOR, min_score * best)
+            cutoff = max(CONTRAST_SCORE_FLOOR, min_score * best)
             ranked = [(t, s) for t, s in ranked if s >= cutoff]
         if len(ranked) == 0:
             raise SystemExit("no tracks passed the score cutoff; lower --min-score")

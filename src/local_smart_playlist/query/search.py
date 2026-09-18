@@ -6,32 +6,16 @@ from typing import Protocol, cast
 import numpy as np
 
 from local_smart_playlist.index.store import Store, TrackRow
-from local_smart_playlist.query import prompts
 
 PEAK_WEIGHT = 0.7  # alpha: peak-window vs track-mean blend
 CANDIDATE_POOL = 10  # prefilter fetches k * this many candidates by track mean
 KNN_LIMIT = 4096  # sqlite-vec KNN k cap
-ABS_SCORE_FLOOR = 0.12  # absolute score floor under the relative min-score cutoff
 
 
 class TextEmbedder(Protocol):
     """Anything that turns text into a unit-norm model vector."""
 
     def __call__(self, texts: list[str]) -> np.ndarray: ...
-
-
-def query_vector(mood: str, embedder: TextEmbedder) -> np.ndarray:
-    """Embed the bare mood phrase into a single unit-norm query vector."""
-    vecs = embedder(list(prompts.fallback_prompts(mood)))
-    if vecs.shape[0] == 0:
-        msg = "no prompts to embed"
-        raise ValueError(msg)
-    mean = vecs.mean(axis=0).astype(np.float32)
-    norm = float(np.linalg.norm(mean))
-    if norm == 0.0:
-        msg = "degenerate query embedding"
-        raise ValueError(msg)
-    return mean / norm
 
 
 @dataclass(frozen=True)

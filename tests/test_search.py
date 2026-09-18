@@ -160,7 +160,9 @@ def test_fallback_prompts() -> None:
     assert list(fallback) == ["melancholic"]
 
 
-def test_expand_mood_raises_on_unreachable(monkeypatch: Any) -> None:
+def test_expand_mood_raises_on_unreachable(monkeypatch: Any, caplog: Any) -> None:
+    import logging
+
     import httpx
 
     def boom(url: str, **kwargs: Any) -> Any:
@@ -168,8 +170,34 @@ def test_expand_mood_raises_on_unreachable(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(httpx, "post", boom)
     monkeypatch.setenv("SP_LLM_BASE_URL", "http://127.0.0.1:1")
-    with pytest.raises(prompts.LlmError, match="adaptation failed"):
+    with (
+        pytest.raises(prompts.LlmError, match="adaptation failed"),
+        caplog.at_level(logging.WARNING, logger="local_smart_playlist.query.prompts"),
+    ):
         _ = prompts.adapt_mood("sad")
+    assert any("llm adapt failed" in r.message for r in caplog.records)
+
+
+def test_adapt_mood_logs_correction(monkeypatch: Any, caplog: Any) -> None:
+    """Successful correction logs input -> output at INFO."""
+    import logging
+    from types import SimpleNamespace
+
+    def fake_post(url: str, **kwargs: Any) -> Any:
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"choices": [{"message": {"content": "melancholic mood, slow tempo."}}]},
+        )
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    with caplog.at_level(logging.INFO, logger="local_smart_playlist.query.prompts"):
+        result = prompts.adapt_mood("sad rainy morning")
+    assert result == "melancholic mood, slow tempo."
+    record = next(r for r in caplog.records if "llm adapt:" in r.message)
+    assert "sad rainy morning" in record.message
+    assert "melancholic mood, slow tempo." in record.message
 
 
 def test_track_documents_orders_by_similarity() -> None:

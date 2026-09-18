@@ -1,5 +1,7 @@
 """`sp` CLI entry point."""
 
+import logging
+import os
 from pathlib import Path
 
 import typed_argparse as tap
@@ -79,6 +81,8 @@ class StatusArgs(tap.TypedArgs):
 
 
 def main() -> None:
+    level = os.environ.get("SP_LOG_LEVEL", "INFO").upper()
+    logging.basicConfig(level=level, format="%(levelname)s %(name)s: %(message)s")
     parser = tap.Parser(
         tap.SubParserGroup(
             tap.SubParser("index", IndexArgs, help="Index a music library"),

@@ -77,9 +77,12 @@ def rank_by_documents(
 ) -> list[tuple[TrackRow, float]]:
     """Rank tracks by evidence-weighted document relevance.
 
-    Score = max over the track's documents of cos(query, phrase) * sim, where
-    *sim* is the audio->text evidence that the track actually exhibits the
-    phrase. A strong text match on a weakly-evidenced phrase cannot win.
+    Score = max over the track's documents of cos(query, phrase) * weight,
+    where weight = sim / best_sim is the phrase's audio->text evidence
+    relative to the track's own strongest phrase. Relative evidence keeps
+    timbre-dependent absolute sim scales (quiet ambient vs dense rock) from
+    burying tracks whose best-matching phrase is a perfect text match.
+    Tracks with no positive evidence are skipped.
     """
     excluded = set() if exclude is None else set(exclude)
     qvec = np.asarray(query_vec, dtype=np.float64).ravel()
@@ -93,7 +96,10 @@ def rank_by_documents(
             continue
         indices = np.asarray([i for i, _ in docs], dtype=np.intp)
         sims = np.asarray([s for _, s in docs], dtype=np.float64)
+        best = float(sims.max())
+        if best <= 0.0:
+            continue  # nothing in the vocab resembles this track at all
         text_sims = np.asarray(vocab[indices] @ qvec, dtype=np.float64).ravel()
-        scored.append((track, float((text_sims * sims).max())))
+        scored.append((track, float((text_sims * (sims / best)).max())))
     scored.sort(key=_score_of, reverse=True)
     return scored[:k]

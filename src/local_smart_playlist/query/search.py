@@ -4,8 +4,12 @@ from dataclasses import dataclass
 from typing import Protocol, cast
 
 import numpy as np
+from shape_extensions import IntVar
 
 from local_smart_playlist.index.store import Store, TrackRow
+
+W = IntVar("W")  # window count per track
+D = IntVar("D")  # embedding dim
 
 PEAK_WEIGHT = 0.7  # alpha: peak-window vs track-mean blend
 CANDIDATE_POOL = 10  # prefilter fetches k * this many candidates by track mean
@@ -28,8 +32,8 @@ def _score_track(
     *,
     rel_path: str,
     mean_sim: float,
-    window_vecs: np.ndarray | None,
-    query_vec: np.ndarray,
+    window_vecs: np.ndarray[[W, D]] | None,
+    query_vec: np.ndarray[[D]],
     alpha: float,
 ) -> float:
     """alpha * peak-window cos + (1 - alpha) * track-mean cos."""
@@ -45,7 +49,7 @@ def _score_track(
 
 def rank_hybrid(
     store: Store,
-    query_vec: np.ndarray,
+    query_vec: np.ndarray[[D]],
     *,
     k: int,
     exclude: set[str] | None = None,
@@ -101,7 +105,7 @@ def rank_hybrid(
 
 
 def rank_by_similarity(
-    store: Store, seed_vec: np.ndarray, *, k: int, exclude: set[str] | None = None, alpha: float = PEAK_WEIGHT
+    store: Store, seed_vec: np.ndarray[[D]], *, k: int, exclude: set[str] | None = None, alpha: float = PEAK_WEIGHT
 ) -> list[tuple[TrackRow, float]]:
     """Same two-stage path, driven by a seed track vector instead of a text query."""
     return rank_hybrid(store, seed_vec, k=k, exclude=exclude, alpha=alpha)

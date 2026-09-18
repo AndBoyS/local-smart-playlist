@@ -5,12 +5,15 @@ from pathlib import Path
 import numpy as np
 from rich import print as rprint
 from rich.table import Table
+from shape_extensions import IntVar
 
 from local_smart_playlist.config import default_db_path
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_texts
 from local_smart_playlist.index.store import Store
 from local_smart_playlist.query import prompts
 from local_smart_playlist.query.phrases import track_documents
+
+D = IntVar("D")  # embedding dim
 
 DEFAULT_TOP_N = 10
 
@@ -31,7 +34,7 @@ def resolve_rel_path(raw: str, root: Path) -> str:
         return Path(raw).expanduser().as_posix()
 
 
-def rank_captions(mean_vec: np.ndarray, vocab: list[str], *, top_n: int) -> list[tuple[str, float]]:
+def rank_captions(mean_vec: np.ndarray[[D]], vocab: list[str], *, top_n: int) -> list[tuple[str, float]]:
     """Top captions by cosine similarity between the unit-norm track mean vector and vocab embeddings."""
     docs = track_documents(mean_vec, embed_texts(vocab), top_n=top_n)
     return [(vocab[i], sim) for i, sim in docs]

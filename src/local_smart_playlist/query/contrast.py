@@ -30,6 +30,7 @@ from local_smart_playlist.query.search import TextEmbedder
 
 W = IntVar("W")  # window count
 D = IntVar("D")  # embedding dim
+B = IntVar("B")  # bank rows (anchors / caption variants)
 
 # Broad mood anchors spanning the widest stylistic range the vocab's caption
 # style covers (en + zh). Their mean approximates "music in general"; window
@@ -58,13 +59,13 @@ MOOD_ANCHORS: list[str] = [
 ]
 
 
-def _unit(vecs: np.ndarray) -> np.ndarray:
+def _unit(vecs: np.ndarray[[B, D]]) -> np.ndarray[[B, D]]:
     norms = np.linalg.norm(vecs, axis=-1, keepdims=True)
     safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore[unknown-argument-type]
     return np.asarray(vecs / safe, dtype=np.float32)
 
 
-def baseline_vector(embedder: TextEmbedder, *, anchors: list[str] | None = None) -> np.ndarray:
+def baseline_vector(embedder: TextEmbedder, *, anchors: list[str] | None = None) -> np.ndarray[[D]]:
     """Unnormalized mean of unit broad-mood anchor embeddings.
 
     Kept unnormalized so ``window @ baseline`` equals the *mean of the
@@ -76,7 +77,7 @@ def baseline_vector(embedder: TextEmbedder, *, anchors: list[str] | None = None)
     return np.asarray(vecs.mean(axis=0), dtype=np.float32)
 
 
-def query_vector_contrast(mood: str, embedder: TextEmbedder) -> np.ndarray:
+def query_vector_contrast(mood: str, embedder: TextEmbedder) -> np.ndarray[[D]]:
     """Embed *mood* as caption-style variants, averaged to one unit query vector."""
     variants = [mood, f"{mood} mood."]
     vecs = _unit(np.asarray(embedder(variants), dtype=np.float32))
@@ -120,8 +121,8 @@ def contrast_score(
 def rank_by_contrast(
     store: Store,
     *,
-    query_vec: np.ndarray,
-    baseline_vec: np.ndarray,
+    query_vec: np.ndarray[[D]],
+    baseline_vec: np.ndarray[[D]],
     k: int,
     exclude: set[str] | None = None,
 ) -> list[tuple[TrackRow, float]]:

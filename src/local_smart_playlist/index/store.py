@@ -9,6 +9,10 @@ from typing import cast
 
 import numpy as np
 import sqlite_vec
+from shape_extensions import IntVar
+
+D = IntVar("D")  # embedding dim (fixed per store instance)
+W = IntVar("W")  # window count per track
 
 SCHEMA_VERSION = "2"
 
@@ -167,8 +171,8 @@ class Store:
         self,
         *,
         rel_path: str,
-        mean_vec: np.ndarray,
-        p90_vec: np.ndarray,
+        mean_vec: np.ndarray[[D]],
+        p90_vec: np.ndarray[[D]],
         n_windows: int,
         duration: float,
         title: str,
@@ -200,7 +204,7 @@ class Store:
         _ = self._conn.execute("DELETE FROM failures WHERE rel_path = ?", (rel_path,))
         self._conn.commit()
 
-    def add_windows(self, *, rel_path: str, window_vecs: np.ndarray) -> None:
+    def add_windows(self, *, rel_path: str, window_vecs: np.ndarray[[W, D]]) -> None:
         """Replace this track's window vectors with the given (n, dim) array."""
         _ = self._conn.execute("DELETE FROM windows WHERE rel_path = ?", (rel_path,))
         _ = self._conn.executemany(
@@ -209,9 +213,9 @@ class Store:
         )
         self._conn.commit()
 
-    def load_windows(self, rel_paths: Iterable[str]) -> dict[str, np.ndarray]:
+    def load_windows(self, rel_paths: Iterable[str]) -> dict[str, np.ndarray[[W, D]]]:
         """All window vectors grouped by rel_path, in window order."""
-        out: dict[str, list[np.ndarray]] = {}
+        out: dict[str, list[np.ndarray[[D]]]] = {}
         ids = list(rel_paths)
         chunk_size = 400  # sqlite variable limit headroom
         for start in range(0, len(ids), chunk_size):
@@ -276,7 +280,7 @@ class Store:
 
     # -- search ------------------------------------------------------------
 
-    def all_track_means(self) -> list[tuple[str, np.ndarray]]:
+    def all_track_means(self) -> list[tuple[str, np.ndarray[[D]]]]:
         """Every (rel_path, mean_vec) — full scan for over-KNN-limit ranking."""
         rows = self._conn.execute("SELECT rel_path, mean_vec FROM tracks").fetchall()
         return [(cast("str", r[0]), _deserialize(cast("bytes", r[1]), self._embed_dim)) for r in rows]
@@ -286,7 +290,7 @@ class Store:
         rows = self._conn.execute("SELECT rel_path FROM tracks").fetchall()
         return {cast("str", r[0]) for r in rows}
 
-    def knn(self, *, query_vec: np.ndarray, k: int) -> list[KnnHit]:
+    def knn(self, *, query_vec: np.ndarray[[D]], k: int) -> list[KnnHit]:
         """Nearest tracks by cosine distance on the mean vector."""
         rows = self._conn.execute(
             """

@@ -23,10 +23,13 @@ Guidelines for coding agents working in this repo.
 - DB access only through `index/store.py`; schema lives there.
 - Embedding math: vectors are L2-normalized before storage; aggregation
   helpers in `embed/aggregate.py` re-normalize after mean/p90.
-- NumPy shape annotations: numeric modules (`embed/aggregate.py`,
-  `audio/features.py`, `audio/windowing.py`, `audio/decode.py`) use pyrefly shape
+- NumPy shape annotations: numpy-touching modules (`embed/aggregate.py`,
+  `audio/features.py`, `audio/windowing.py`, `audio/decode.py`, `index/store.py`,
+  `query/search.py`, `query/contrast.py`, `query/vocab_cal.py`, `query/phrases.py`,
+  `commands/describe_cmd.py`) use pyrefly shape
   types (`np.ndarray[[N, D]]` + `shape_extensions.IntVar`, one `IntVar` per line —
-  tuple-assignment breaks the binding). `embed/model.py` torch boundary stays
+  tuple-assignment breaks the binding; IntVars are function-signature only —
+  dataclass fields reject them). `embed/model.py` torch boundary stays
   unannotated/`Any`. Every pyrefly suppression must name its error code —
   `# pyrefly: ignore[<code>]` — bare `# pyrefly: ignore` is not allowed (same
   rule as ruff's PGH). Known stub gaps, with the code to use at each site:

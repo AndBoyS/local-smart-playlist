@@ -23,6 +23,11 @@ Guidelines for coding agents working in this repo.
 - DB access only through `index/store.py`; schema lives there.
 - Embedding math: vectors are L2-normalized before storage; aggregation
   helpers in `embed/aggregate.py` re-normalize after mean/p90.
+- NumPy dtype: no gratuitous wrapping. `np.asarray(x, dtype=...)` only at
+  real boundaries (embedder/torch/soxr output, public API args that may be
+  lists). Between typed ndarrays use `.astype()` for casts and bare ops
+  otherwise; dtype is guaranteed by the boundaries, not re-asserted at
+  every intermediate step.
 - NumPy shape annotations: numpy-touching modules (`embed/aggregate.py`,
   `audio/features.py`, `audio/windowing.py`, `audio/decode.py`, `index/store.py`,
   `query/search.py`, `query/contrast.py`, `query/vocab_cal.py`, `query/phrases.py`,
@@ -37,7 +42,8 @@ Guidelines for coding agents working in this repo.
     arrays (facebook/pyrefly#4901), ndarray comparison dunders, reshape without
     reshape/astype.
   - `# pyrefly: ignore[unknown-argument-type]`: `np.where` fed `np.linalg.norm`
-    output, `np.asarray`/`np.log`/`np.exp`/`sf.write` over unknown-typed args.
+    output, `np.log`/`np.exp`/`sf.write` over unknown-typed args. NOT a reason
+    to wrap things in `np.asarray` — see dtype rule above.
   Prefer the tracked method forms (`x.mean(axis=)`, `x.argmax()`) instead of a
   new ignore. If a suppression stops being needed, delete it — verify by
   removing it and re-running `uv run pyrefly check` (`unused-type-ignore = true`

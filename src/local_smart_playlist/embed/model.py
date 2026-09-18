@@ -39,7 +39,7 @@ def pick_device() -> str:
 def _unit(vectors: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(vectors, axis=-1, keepdims=True)
     safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore[unknown-argument-type]
-    return np.asarray(vectors / safe, dtype=np.float32)
+    return vectors / safe
 
 
 def _to_24k(windows: list[np.ndarray]) -> list[np.ndarray]:

@@ -56,7 +56,7 @@ def vocab_vector_bank(embedder: TextEmbedder, vocab: list[str]) -> np.ndarray[[V
     vecs = np.asarray(embedder(vocab), dtype=np.float32)
     norms = np.linalg.norm(vecs, axis=-1, keepdims=True)
     safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore[unknown-argument-type]
-    return np.asarray(vecs / safe, dtype=np.float32)
+    return vecs / safe
 
 
 @dataclass(frozen=True)
@@ -65,11 +65,6 @@ class VocabCalScore:
 
     score: float
     coverage: float
-
-
-def _sigmoid(x: np.ndarray) -> np.ndarray:
-    out = 1.0 / (1.0 + np.exp(-x))
-    return np.asarray(out, dtype=np.float64)  # pyrefly: ignore[unknown-argument-type]
 
 
 def vocab_calibration_score(
@@ -86,17 +81,17 @@ def vocab_calibration_score(
     a sigmoid of the mean 20-anchor margin (fallback for uninformative
     profiles). Coverage = share of windows above the 0.5 neutral point.
     """
-    sims_q = np.asarray(window_vecs @ query_vec, dtype=np.float64).ravel()
-    sims_v = np.asarray(window_vecs @ vocab_vecs.T, dtype=np.float64)
+    sims_q = (window_vecs @ query_vec).astype(np.float64).ravel()
+    sims_v = (window_vecs @ vocab_vecs.T).astype(np.float64)
     best_vocab = float(sims_v.max())
     if best_vocab < VOCAB_COVER_FLOOR:
-        margins = sims_q - np.asarray(window_vecs @ margin_vec, dtype=np.float64).ravel()
-        z = np.asarray(margins.mean() / MARGIN_TAU, dtype=np.float64).ravel()
-        score = float(_sigmoid(z)[0])
+        margins = sims_q - (window_vecs @ margin_vec).astype(np.float64).ravel()
+        z = margins.mean() / MARGIN_TAU
+        score = float(1.0 / (1.0 + np.exp(-z)))
         coverage = sum(1 for m in margins.tolist() if m > 0.0) / len(margins.tolist())
     else:
         beaten = np.asarray(sims_q[:, None] > sims_v, dtype=np.float64)  # pyrefly: ignore[unsupported-operation]
-        percentiles = np.asarray(beaten.sum(axis=1) / float(vocab_vecs.shape[0])).ravel()
+        percentiles = (beaten.sum(axis=1) / float(vocab_vecs.shape[0])).ravel()
         score = float(percentiles.mean())
         coverage = sum(1 for p in percentiles.tolist() if p > NEUTRAL) / len(percentiles.tolist())
     return VocabCalScore(score=score, coverage=coverage)

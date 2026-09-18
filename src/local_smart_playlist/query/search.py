@@ -41,7 +41,7 @@ def _score_track(
         return mean_sim  # legacy track without stored windows
     sims = np.asarray(window_vecs @ query_vec, dtype=np.float64)
     peak = float(sims.max())
-    mean_vec = np.asarray(window_vecs.mean(axis=0), dtype=np.float64)
+    mean_vec = window_vecs.mean(axis=0).astype(np.float64)
     mean_norm = float(np.linalg.norm(mean_vec))
     mean_sim_exact = float(mean_vec @ query_vec) / mean_norm if mean_norm > 0.0 else 0.0
     return alpha * peak + (1.0 - alpha) * mean_sim_exact
@@ -68,10 +68,7 @@ def rank_hybrid(
         # Full-library ranking: plain scan over mean vectors (numpy matmul),
         # avoiding the sqlite-vec KNN row cap.
         rows = store.all_track_means()
-        sims = np.asarray(
-            np.stack([v for _, v in rows], dtype=np.float64) @ np.asarray(query_vec, dtype=np.float64),
-            dtype=np.float64,
-        ).ravel()
+        sims = (np.stack([v for _, v in rows]).astype(np.float64) @ np.asarray(query_vec, dtype=np.float64)).ravel()
         order = np.argsort(-sims)[:want]
         candidates = [_Candidate(rel_path=cast("str", rows[i.item()][0]), mean_sim=float(sims[i])) for i in order]
     else:

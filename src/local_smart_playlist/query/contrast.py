@@ -62,7 +62,7 @@ MOOD_ANCHORS: list[str] = [
 def _unit(vecs: np.ndarray[[B, D]]) -> np.ndarray[[B, D]]:
     norms = np.linalg.norm(vecs, axis=-1, keepdims=True)
     safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore[unknown-argument-type]
-    return np.asarray(vecs / safe, dtype=np.float32)
+    return vecs / safe
 
 
 def baseline_vector(embedder: TextEmbedder, *, anchors: list[str] | None = None) -> np.ndarray[[D]]:
@@ -74,7 +74,7 @@ def baseline_vector(embedder: TextEmbedder, *, anchors: list[str] | None = None)
     anchor set) and bury gentle textures under the broad baseline.
     """
     vecs = _unit(np.asarray(embedder(list(MOOD_ANCHORS if anchors is None else anchors)), dtype=np.float32))
-    return np.asarray(vecs.mean(axis=0), dtype=np.float32)
+    return vecs.mean(axis=0)
 
 
 def query_vector_contrast(mood: str, embedder: TextEmbedder) -> np.ndarray[[D]]:
@@ -95,6 +95,7 @@ class ContrastScore:
 def _median(values: np.ndarray[[W]]) -> float:
     """Median without np.median (shape stubs track the module form poorly)."""
     ordered = np.asarray(values, dtype=np.float64).copy()
+    # asarray kept: `values` arrives typed as ndarray but may be a list at call sites
     n = ordered.shape[0]
     if n == 0:
         return 0.0
@@ -109,8 +110,8 @@ def contrast_score(
     window_vecs: np.ndarray[[W, D]], *, query_vec: np.ndarray[[D]], baseline_vec: np.ndarray[[D]]
 ) -> ContrastScore:
     """Median query-vs-baseline margin and positive-margin coverage over windows."""
-    sims_q = np.asarray(window_vecs @ query_vec, dtype=np.float64).ravel()
-    sims_b = np.asarray(window_vecs @ baseline_vec, dtype=np.float64).ravel()
+    sims_q = (window_vecs @ query_vec).astype(np.float64).ravel()
+    sims_b = (window_vecs @ baseline_vec).astype(np.float64).ravel()
     margins = sims_q - sims_b
     # Python-level count keeps stub-untracked ndarray ops out; n is small (~tens of windows)
     values = margins.tolist()

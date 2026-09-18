@@ -23,14 +23,20 @@ paths relative to the playlist file, so they stay portable across synced
 copies of the library (e.g. Dropbox → Android via FolderSync, consumed by
 AIMP). Use `-o` for a custom destination, `-o -` to print the m3u8 to stdout.
 
-Text queries rank tracks by **sustained-mood contrast** (default):
-each stored 10 s window is scored as a margin — `cos(window, query) −
-cos(window, broad-mood baseline)` — where the baseline is the mean of ~20
-wide-coverage mood anchors. The margin cancels the timbre-dependent audio→text
-similarity scale (quiet ambient vs dense rock compete on one scale), and the
-track score is the **median** margin over its windows, so most of the track
-must fit; ties break by the share of positive-margin windows. Full-library
-scan over stored windows; tracks without stored windows must be re-indexed.
+Text queries rank tracks by **caption-vocab calibration** (default): each
+stored 10 s window is scored by the percentile of `cos(window, query)` among
+that window's own similarities to the 215 readout captions (`sp describe`
+vocabulary) — a self-referential bar that cancels most of the
+timbre-dependent audio→text similarity scale (soft ambient and dense rock
+calibrated against their own texture, not an absolute scale). The track
+score is the **mean per-window percentile**, so most of the track must fit;
+ties break by the share of windows above the 0.5 neutral point. Tracks whose
+best caption affinity is far below the library norm (uninformative profiles)
+fall back to a sigmoid of the broad-mood margin against ~20 wide-coverage
+anchors. Full-library scan over stored windows; tracks without stored
+windows must be re-indexed. Scores are absolute calibrated probabilities:
+0.5 = the query fits as well as a typical caption, 0.9+ = clearly on-mood;
+`--min-score` is that absolute cutoff (default 0.9), floored at 0.5.
 
 `--seed-track` keeps the two-stage audio ranking:
 track-mean KNN prefilter, then exact peak-window rescore. Seed score =

@@ -36,8 +36,6 @@ W = IntVar("W")  # window count
 D = IntVar("D")  # embedding dim
 V = IntVar("V")  # vocab size
 
-RANKER_VOCAB = "vocab"
-
 # Cutoff floor in percentile space: 0.5 = query fits as well as a typical
 # caption. Scores are absolute (calibrated), so the CLI cutoff is an absolute
 # threshold too (min_score, default 0.9); the floor only blocks sub-neutral

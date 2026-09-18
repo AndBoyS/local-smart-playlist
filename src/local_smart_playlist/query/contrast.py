@@ -1,21 +1,23 @@
-"""Contrast-based sustained-mood ranking.
+"""Margin scoring and the broad-mood anchor bank (guard/eval components).
 
-Direct text→audio ranking buries whole textures (ambient, game OST, sparse
-piano) because MuQ-MuLan audio→text cosine scale is timbre-dependent, and a
-single peak window lets one short passage admit an off-mood track. This
-ranker corrects both:
+The additive-margin ranker described here was the production ranker until it
+was replaced by the caption-vocab calibration (``query/vocab_cal.py``). Its
+pieces remain live:
 
-- **Contrast margin**: each window is scored against the query *relative to a
-  broad-mood baseline* (mean of many wide-coverage mood captions). The
-  baseline absorbs the timbre-dependent similarity scale: a window counts
-  only when it is closer to the requested mood than to music-in-general.
-- **Sustained mood**: the track score is the *median* margin over all its
-  windows, so most of the track must fit (a brief matching passage cannot
-  carry an otherwise aggressive track). Coverage — the share of windows with
-  a positive margin — breaks ties toward tracks that fit throughout.
+- **MOOD_ANCHORS / baseline_vector**: the 20 broad-mood anchor bank and its
+  unnormalized mean — used as the baseline in the guard fallback of the
+  vocab-calibration ranker (tracks with uninformative vocab profiles).
+- **query_vector_contrast**: canonical query embedding ({q} + "{q} mood.",
+  averaged) — still how text queries become vectors.
+- **contrast_score / rank_by_contrast**: the median-margin ranker, kept for
+  ``scripts/eval_rank.py`` comparisons and tests only.
 
-Ranking is a full-library scan over stored window vectors. Tracks without
-stored windows (re-index required) are skipped.
+Historical rationale (why the margin exists): direct text→audio ranking
+buries whole textures (ambient, game OST, sparse piano) because MuQ-MuLan
+audio→text cosine scale is timbre-dependent, and a single peak window lets
+one short passage admit an off-mood track. The margin subtracts the mean
+per-anchor affinity ("music in general") per window, and the track score is
+the *median* margin, so most of the track must fit.
 """
 
 from dataclasses import dataclass
@@ -28,8 +30,6 @@ from local_smart_playlist.query.search import TextEmbedder
 
 W = IntVar("W")  # window count
 D = IntVar("D")  # embedding dim
-
-CONTRAST_SCORE_FLOOR = 0.02
 
 # Broad mood anchors spanning the widest stylistic range the vocab's caption
 # style covers (en + zh). Their mean approximates "music in general"; window

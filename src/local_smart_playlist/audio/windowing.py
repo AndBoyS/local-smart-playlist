@@ -19,7 +19,9 @@ TRIM_DB = -50.0
 MIN_WINDOW_SECONDS = 1.0
 
 
-def frame_rms(samples: np.ndarray[[S]], *, sr: int = TARGET_SR, frame_seconds: float = FRAME_SECONDS) -> np.ndarray[[F]]:
+def frame_rms(
+    samples: np.ndarray[[S]], *, sr: int = TARGET_SR, frame_seconds: float = FRAME_SECONDS
+) -> np.ndarray[[F]]:
     """Per-frame RMS over non-overlapping frames of *frame_seconds*."""
     frame_len = int(frame_seconds * sr)
     n_frames = len(samples) // frame_len
@@ -50,7 +52,9 @@ def trim_silence(samples: np.ndarray[[S]], *, sr: int = TARGET_SR, threshold_db:
     return samples[start:end]
 
 
-def slice_windows(samples: np.ndarray[[S]], *, sr: int = TARGET_SR, window_seconds: float = WINDOW_SECONDS) -> list[np.ndarray[[W]]]:
+def slice_windows(
+    samples: np.ndarray[[S]], *, sr: int = TARGET_SR, window_seconds: float = WINDOW_SECONDS
+) -> list[np.ndarray[[W]]]:
     """Trim silence, then split into disjoint *window_seconds* windows."""
     trimmed = trim_silence(samples, sr=sr)
     window_len = int(window_seconds * sr)

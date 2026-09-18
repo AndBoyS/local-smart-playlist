@@ -1,6 +1,5 @@
 """Search ranking tests with a fake embedder and hybrid two-stage scoring."""
 
-
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +8,12 @@ import pytest
 
 from local_smart_playlist.index.store import Store
 from local_smart_playlist.query import prompts
+from local_smart_playlist.query.phrases import (
+    ensure_documents,
+    rank_by_documents,
+    track_documents,
+    vocab_fingerprint,
+)
 from local_smart_playlist.query.search import (
     PEAK_WEIGHT,
     query_vector,
@@ -70,20 +75,6 @@ def store_with(tmp_path: Path) -> Store:
 
 def test_query_vector_direct() -> None:
     v = query_vector("sad", fake_embedder)
-    assert np.allclose(v, basis(0))
-
-
-def test_query_vector_llm_averages_prompts(monkeypatch: Any) -> None:
-    monkeypatch.setattr(
-        prompts,
-        "expand_mood",
-        lambda mood: [  # pyrefly: ignore
-            "sad and slow",
-            "sad piano line",
-            "sad minor key ballad",
-        ],
-    )
-    v = query_vector("sad", fake_embedder, use_llm=True)
     assert np.allclose(v, basis(0))
 
 
@@ -177,5 +168,60 @@ def test_expand_mood_raises_on_unreachable(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(httpx, "post", boom)
     monkeypatch.setenv("SP_LLM_BASE_URL", "http://127.0.0.1:1")
-    with pytest.raises(prompts.LlmError, match="expansion failed"):
-        _ = prompts.expand_mood("sad")
+    with pytest.raises(prompts.LlmError, match="adaptation failed"):
+        _ = prompts.adapt_mood("sad")
+
+
+def test_track_documents_orders_by_similarity() -> None:
+    """Documents = nearest vocab phrases to the track mean vector."""
+    mean = (basis(0) + 0.5 * basis(1)).astype(np.float32)
+    mean = (mean / float(np.linalg.norm(mean))).astype(np.float32)
+    docs = track_documents(mean, np.stack([basis(0), basis(1), basis(2)]), top_n=2)
+    assert [i for i, _ in docs] == [0, 1]
+    assert docs[0][1] > docs[1][1]
+
+
+def test_track_documents_respects_top_n() -> None:
+    docs = track_documents(basis(1), np.stack([basis(0), basis(1)]), top_n=1)
+    assert docs == [(1, 1.0)]
+
+
+def test_ensure_documents_backfills_and_persists(tmp_path: Path) -> None:
+    """Backfill extracts documents for every track; fingerprint match keeps existing docs."""
+    store = store_with(tmp_path)
+    vocab = ["sad song", "happy song", "other song"]
+    vocab_vecs = ensure_documents(store, fake_embedder, vocab=vocab)
+    docs = store.all_document_indices()
+    assert set(docs) == {f"t{i}.mp3" for i in range(4)}
+    # every track's mean is a basis vector, so its top document matches exactly
+    for i in range(4):
+        top = docs[f"t{i}.mp3"][0]
+        assert np.allclose(vocab_vecs[top], fake_embedder([vocab[top]]))
+    # matching fingerprint: existing documents are left untouched
+    store.set_meta("doc_vocab_sha", vocab_fingerprint(vocab))
+    store.set_documents("t0.mp3", [(0, 1.0)])
+    _ = ensure_documents(store, fake_embedder, vocab=vocab)
+    assert store.all_document_indices()["t0.mp3"] == [0]  # untouched
+
+
+def test_rank_by_documents_orders_by_document_relevance(tmp_path: Path) -> None:
+    """Query text ranks tracks by best-matching document: sad track first for 'sad'."""
+    store = Store(tmp_path / "doc.db", embed_dim=DIM)
+    upsert_track(store, "sad.mp3", np.stack([basis(0)] * 3))
+    upsert_track(store, "happy.mp3", np.stack([basis(1)] * 3))
+    vocab = ["sad song", "happy song"]
+    vocab_vecs = ensure_documents(store, fake_embedder, vocab=vocab, top_n=1)
+    ranked = rank_by_documents(store, query_vec=fake_embedder(["sad song"])[0], vocab_vecs=vocab_vecs, k=2)
+    assert ranked[0][0].rel_path == "sad.mp3"
+    assert ranked[0][1] == 1.0
+
+
+def test_rank_by_documents_respects_k_and_exclude(tmp_path: Path) -> None:
+    store = Store(tmp_path / "doc2.db", embed_dim=DIM)
+    for i in range(4):
+        upsert_track(store, f"t{i}.mp3", np.stack([basis(i % 2)] * 3))
+    vocab_vecs = ensure_documents(store, fake_embedder, vocab=["sad song", "happy song"], top_n=1)
+    ranked = rank_by_documents(store, query_vec=basis(0), vocab_vecs=vocab_vecs, k=2, exclude={"t0.mp3"})
+    rels = [t.rel_path for t, _ in ranked]
+    assert "t0.mp3" not in rels
+    assert len(ranked) == 2

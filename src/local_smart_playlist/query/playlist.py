@@ -1,6 +1,5 @@
 """m3u8 playlist writing."""
 
-
 import re
 import unicodedata
 from pathlib import Path

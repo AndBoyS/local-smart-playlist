@@ -1,6 +1,5 @@
 """File discovery and stable track identity."""
 
-
 from pathlib import Path
 
 from local_smart_playlist.audio.decode import AUDIO_EXTS

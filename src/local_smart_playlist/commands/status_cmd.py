@@ -1,6 +1,5 @@
 """`sp status` command."""
 
-
 from pathlib import Path
 
 from rich import print as rprint

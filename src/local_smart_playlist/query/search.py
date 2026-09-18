@@ -1,6 +1,5 @@
 """Query embedding and ranking against the track store."""
 
-
 from dataclasses import dataclass
 from typing import Protocol, cast
 
@@ -12,6 +11,7 @@ from local_smart_playlist.query import prompts
 PEAK_WEIGHT = 0.7  # alpha: peak-window vs track-mean blend
 CANDIDATE_POOL = 10  # prefilter fetches k * this many candidates by track mean
 KNN_LIMIT = 4096  # sqlite-vec KNN k cap
+ABS_SCORE_FLOOR = 0.12  # absolute score floor under the relative min-score cutoff
 
 
 class TextEmbedder(Protocol):
@@ -20,10 +20,9 @@ class TextEmbedder(Protocol):
     def __call__(self, texts: list[str]) -> np.ndarray: ...
 
 
-def query_vector(mood: str, embedder: TextEmbedder, *, use_llm: bool = False) -> np.ndarray:
-    """Embed *mood* (optionally LLM-expanded) into a single unit-norm vector."""
-    text_prompts = prompts.expand_mood(mood) if use_llm else prompts.fallback_prompts(mood)
-    vecs = embedder(list(text_prompts))
+def query_vector(mood: str, embedder: TextEmbedder) -> np.ndarray:
+    """Embed the bare mood phrase into a single unit-norm query vector."""
+    vecs = embedder(list(prompts.fallback_prompts(mood)))
     if vecs.shape[0] == 0:
         msg = "no prompts to embed"
         raise ValueError(msg)
@@ -86,9 +85,7 @@ def rank_hybrid(
             dtype=np.float64,
         ).ravel()
         order = np.argsort(-sims)[:want]
-        candidates = [
-            _Candidate(rel_path=cast("str", rows[i.item()][0]), mean_sim=float(sims[i])) for i in order
-        ]
+        candidates = [_Candidate(rel_path=cast("str", rows[i.item()][0]), mean_sim=float(sims[i])) for i in order]
     else:
         knn = store.knn(query_vec=query_vec, k=want)
         candidates = [_Candidate(hit.rel_path, 1.0 - hit.distance) for hit in knn]

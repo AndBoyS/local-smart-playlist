@@ -123,9 +123,7 @@ def test_run_describes_track(monkeypatch: Any, tmp_path: Path, capsys: Any) -> N
         store.set_meta("library_root", str(root))
         upsert_track(store, "song.flac", basis(0))
 
-    monkeypatch.setattr(
-        prompts, "caption_vocab", lambda: ["caption A", "caption B"]
-    )
+    monkeypatch.setattr(prompts, "caption_vocab", lambda: ["caption A", "caption B"])
     describe_cmd.DescribeArgs.run(path=str(root / "song.flac"), db=db, n=2)
     out = capsys.readouterr().out
     assert "song.flac" in out

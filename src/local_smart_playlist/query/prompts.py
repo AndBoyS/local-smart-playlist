@@ -15,34 +15,23 @@ def _load_vocab() -> str:
 
 
 def caption_vocab() -> list[str]:
-    """Readout vocabulary lines, blank-stripped."""
-    return [line.strip() for line in _load_vocab().splitlines() if line.strip() != ""]
+    """Readout vocabulary lines, blank-stripped, `#` comments dropped."""
+    return [
+        line.strip() for line in _load_vocab().splitlines() if line.strip() != "" and not line.lstrip().startswith("#")
+    ]
 
 
-_SYSTEM_PROMPT = (
-    "You expand a mood word or short mood phrase into candidate descriptions of "
-    "how music matching it could sound. Your output is fed to an audio-text "
-    "embedding model (MuQ-MuLan), so every line should be a caption in the style of "
-    "the reference vocabulary below.\n\n"
-    "Reference vocabulary (attribute captions in the model's own language, en and zh):\n"
-    "---\n"
-    "{vocab}\n"
-    "---\n\n"
-    "For the given mood: first output the 8 lines from the reference vocabulary "
-    "that best match the mood, verbatim. Then write 8-12 NEW attribute captions "
-    "in the same style (comma-separated genre / mood / instrument / tempo / "
-    "vocals / keywords) covering as many readings as possible: every genre, "
-    "era, instrumentation and energy level the phrase could plausibly describe. "
-    "Aim for 18-20 lines total, one per line, no numbering, no commentary."
+_ADAPT_PROMPT = (
+    "You rewrite a user's music mood query as ONE attribute caption in the "
+    "format used to train a music-text embedding model (MuQ-MuLan): "
+    "comma-separated lowercase attributes — mood, genre, instrument, tempo, "
+    "vocals — ending with a period. Example input 'sad rainy morning' → "
+    "output 'melancholic mood, slow tempo, sparse piano.'.\n\n"
+    "Translate non-English text, fix typos, normalize phrasing. Express every "
+    "meaning element of the input as an attribute; never add styles, "
+    "instruments or moods the input does not imply. Keep it one short line, "
+    "no quotes, no commentary, nothing but the caption."
 )
-
-
-def _system_prompt() -> str:
-    return _SYSTEM_PROMPT.format(vocab=_load_vocab())
-
-MAX_PROMPTS = 20
-MIN_PROMPTS = 5
-MIN_CAPTION_LEN = 8
 
 
 class LlmError(Exception):
@@ -63,8 +52,8 @@ def _settings() -> tuple[str, str, str]:
     return base_url, model, api_key
 
 
-def expand_mood(mood: str) -> list[str]:
-    """Ask the LLM for up to 20 caption-style prompts covering many readings of *mood*."""
+def adapt_mood(mood: str) -> str:
+    """Correct *mood* into one embedding-friendly phrase; raises LlmError on failure."""
     import uuid
 
     import httpx
@@ -76,27 +65,26 @@ def expand_mood(mood: str) -> list[str]:
     body = {
         "model": model,
         "messages": [
-            {"role": "system", "content": _system_prompt()},
-            {"role": "user", "content": f"Mood: {mood}"},
+            {"role": "system", "content": _ADAPT_PROMPT},
+            {"role": "user", "content": f"Query: {mood}"},
         ],
-        "temperature": 0.9,
+        "temperature": 0.2,
     }
     try:
-        resp = httpx.post(f"{base_url.rstrip('/')}/chat/completions", json=body, headers=headers, timeout=30.0)
+        resp = httpx.post(f"{base_url.rstrip('/')}/chat/completions", json=body, headers=headers, timeout=60.0)
         _ = resp.raise_for_status()
         payload = cast("Any", resp.json())
         content = payload["choices"][0]["message"]["content"]
     except Exception as exc:  # noqa: BLE001 — surface any endpoint failure as LlmError
-        msg = f"LLM expansion failed: {exc}"
+        msg = f"LLM adaptation failed: {exc}"
         raise LlmError(msg) from exc
 
     text = cast("str", content)
-    prompts = [line.strip().lstrip("-*• ").strip() for line in text.splitlines()]
-    prompts = [p for p in prompts if len(p) >= MIN_CAPTION_LEN][:MAX_PROMPTS]
-    if len(prompts) < MIN_PROMPTS:
-        msg = f"LLM returned only {len(prompts)} usable captions"
-        raise LlmError(msg)
-    return prompts
+    lines = [line.strip().lstrip("-*• ").strip() for line in text.splitlines()]
+    lines = [line for line in lines if line != ""]
+    if len(lines) == 0:
+        raise LlmError("LLM adaptation returned no text")
+    return lines[0]
 
 
 def fallback_prompts(mood: str) -> Sequence[str]:

@@ -1,13 +1,15 @@
 """`sp play` command."""
 
-
 from pathlib import Path
 
 from local_smart_playlist.config import default_db_path, default_playlist_dir
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_texts
 from local_smart_playlist.index.store import Store
+from local_smart_playlist.query import phrases
+from local_smart_playlist.query.phrases import rank_by_documents
 from local_smart_playlist.query.playlist import playlist_path, write_playlist
-from local_smart_playlist.query.search import query_vector, rank_by_similarity, rank_hybrid
+from local_smart_playlist.query.prompts import LlmError, adapt_mood
+from local_smart_playlist.query.search import ABS_SCORE_FLOOR, query_vector, rank_by_similarity
 
 PREVIEW_COUNT = 10
 
@@ -47,14 +49,28 @@ class PlayArgs:
                     store, seed.mean_vec, k=n if n is not None else store.track_count(), exclude=exclude, alpha=alpha
                 )
             else:
-                qvec = query_vector(query, embed_texts, use_llm=llm)
-                ranked = rank_hybrid(
-                    store, qvec, k=n if n is not None else store.track_count(), exclude=exclude, alpha=alpha
+                adapted = query
+                if llm:
+                    try:
+                        adapted = adapt_mood(query)
+                    except LlmError:
+                        adapted = query  # offline fallback: embed the raw phrase
+                qvec = query_vector(adapted, embed_texts)
+                vocab_vecs = phrases.ensure_documents(store, embed_texts)
+                ranked = rank_by_documents(
+                    store,
+                    query_vec=qvec,
+                    vocab_vecs=vocab_vecs,
+                    k=n if n is not None else store.track_count(),
+                    exclude=exclude,
                 )
 
-        ranked = [(t, s) for t, s in ranked if s >= min_score]
+        if len(ranked) > 0:
+            best = ranked[0][1]
+            cutoff = max(ABS_SCORE_FLOOR, min_score * best)
+            ranked = [(t, s) for t, s in ranked if s >= cutoff]
         if len(ranked) == 0:
-            raise SystemExit(f"no tracks scored >= {min_score}; lower --min-score")
+            raise SystemExit("no tracks passed the score cutoff; lower --min-score")
 
         root = Path(library_root) if library_root is not None else Path.cwd()
         entries: list[tuple[Path, str, float, float]] = [

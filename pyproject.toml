@@ -80,6 +80,7 @@ max-positional-args = 2
 "src/local_smart_playlist/embed/*" = ["PLC0415"]
 "src/local_smart_playlist/audio/decode.py" = ["PLC0415"]
 "src/local_smart_playlist/query/prompts.py" = ["PLC0415"]
+"src/local_smart_playlist/query/search.py" = ["PLC0415"]
 # Tests are allowed magic numbers, late imports, inline exception asserts.
 "tests/*" = ["PLC0415", "PLR2004", "PLR0917", "PT017", "TRY301"]
 

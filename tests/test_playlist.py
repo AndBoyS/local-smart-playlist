@@ -1,6 +1,5 @@
 """m3u8 playlist writer tests."""
 
-
 from pathlib import Path
 
 from local_smart_playlist.query.playlist import (
@@ -52,11 +51,7 @@ def test_render_relative_paths(tmp_path: Path) -> None:
     ]
     doc = render_m3u8(tracks, root=root, out_path=out)
     assert doc == (
-        "#EXTM3U\n"
-        "#EXTINF:210,artist/album/song\n"
-        "../artist/album/song.mp3\n"
-        "#EXTINF:30,other\n"
-        "../other.flac\n"
+        "#EXTM3U\n#EXTINF:210,artist/album/song\n../artist/album/song.mp3\n#EXTINF:30,other\n../other.flac\n"
     )
 
 

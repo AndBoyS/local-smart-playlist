@@ -1,6 +1,5 @@
 """`sp` CLI entry point."""
 
-
 from pathlib import Path
 
 import typed_argparse as tap
@@ -12,7 +11,9 @@ class IndexArgs(tap.TypedArgs):
     root: Path = tap.arg(positional=True, metavar="ROOT", help="Library root directory")
     rescan: bool = tap.arg(help="Re-index tracks already present in the DB")
     quiet: bool = tap.arg(help="Hide the progress bar (shown by default)")
-    db: Path | None = tap.arg(type=Path, help="Index DB path (default: .sp-index/index.db, relative to the working directory)")
+    db: Path | None = tap.arg(
+        type=Path, help="Index DB path (default: .sp-index/index.db, relative to the working directory)"
+    )
 
     def run(self) -> None:
         index_cmd.IndexArgs.run(root=Path(self.root).expanduser(), db=self.db, rescan=self.rescan, quiet=self.quiet)
@@ -22,12 +23,24 @@ class PlayArgs(tap.TypedArgs):
     query: str = tap.arg(positional=True, metavar="QUERY", help="Mood word or phrase")
     n: int | None = tap.arg("-n", default=None, help="Number of tracks (default: all indexed)")
     out: str | None = tap.arg("-o", default=None, help="Output m3u8 path, or '-' for stdout")
-    llm: bool = tap.arg(help="Expand the query with an LLM (OpenAI-compatible endpoint)")
-    seed_track: str | None = tap.arg(default=None, metavar="PATH", help="Use a track's vector as the query instead of text")
-    alpha: float = tap.arg(default=0.7, help="Peak-window weight in scoring (0 = mean only, 1 = peak only)")
-    min_score: float = tap.arg(default=0.45, help="Keep only tracks scoring at least this (default: all are ranked, kept ones filtered)")
+    llm: bool = tap.arg(
+        help="Rewrite/normalize the query with an LLM before embedding (correction only, never adds meaning)"
+    )
+    seed_track: str | None = tap.arg(
+        default=None, metavar="PATH", help="Use a track's vector as the query instead of text"
+    )
+    alpha: float = tap.arg(
+        default=0.7,
+        help="Peak-window weight for --seed-track ranking (0 = mean only, 1 = peak only); text queries rank by document relevance",
+    )
+    min_score: float = tap.arg(
+        default=0.6,
+        help="Keep tracks scoring >= max(floor, fraction x best score) — fraction of the top score (default 0.6)",
+    )
     dry: bool = tap.arg(help="Print the result without writing a playlist")
-    db: Path | None = tap.arg(type=Path, help="Index DB path (default: .sp-index/index.db, relative to the working directory)")
+    db: Path | None = tap.arg(
+        type=Path, help="Index DB path (default: .sp-index/index.db, relative to the working directory)"
+    )
 
     def run(self) -> None:
         playlist_cmd.PlayArgs.run(
@@ -44,16 +57,22 @@ class PlayArgs(tap.TypedArgs):
 
 
 class DescribeArgs(tap.TypedArgs):
-    path: str = tap.arg(positional=True, metavar="PATH", help="Track path (absolute, cwd-relative, or indexed rel path)")
+    path: str = tap.arg(
+        positional=True, metavar="PATH", help="Track path (absolute, cwd-relative, or indexed rel path)"
+    )
     n: int = tap.arg("-n", default=describe_cmd.DEFAULT_TOP_N, help="Number of captions to show (default: 10)")
-    db: Path | None = tap.arg(type=Path, help="Index DB path (default: .sp-index/index.db, relative to the working directory)")
+    db: Path | None = tap.arg(
+        type=Path, help="Index DB path (default: .sp-index/index.db, relative to the working directory)"
+    )
 
     def run(self) -> None:
         describe_cmd.DescribeArgs.run(path=self.path, db=self.db, n=self.n)
 
 
 class StatusArgs(tap.TypedArgs):
-    db: Path | None = tap.arg(type=Path, help="Index DB path (default: .sp-index/index.db, relative to the working directory)")
+    db: Path | None = tap.arg(
+        type=Path, help="Index DB path (default: .sp-index/index.db, relative to the working directory)"
+    )
 
     def run(self) -> None:
         status_cmd.StatusArgs.run(db=self.db)

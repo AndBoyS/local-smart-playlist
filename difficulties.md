@@ -134,3 +134,47 @@ Findings:
 detection in `adapt_mood`) was reverted — flag semantics stay honest, `--llm`
 adapts whatever it gets, and the user simply doesn't pass it for canonical
 attribute lists (measured harm: TFS margin 0.120 → 0.040, rank 799 → 2012).
+
+## §7 Caption-vocab calibration ranker (2026 follow-up, shipped)
+
+Production ranker replaced: `sp play` now scores tracks with the
+caption-vocab calibration (lever #5, CAF-Score style;
+`query/vocab_cal.py`), not the additive margin. The old margin ranker
+survives only as the guard-fallback path and in the eval harness.
+
+Mechanism: per window, score = percentile of cos(w, query) among that
+window's cos(w, caption) values over the 215-caption `sp describe` vocab
+(self-referential bar — the window's own caption profile, not 20
+hand-picked anchors). Track score = mean window percentile; ties by
+coverage (share of windows > 0.5). Guard: tracks whose best vocab
+affinity < 0.30 (measured library p1 = 0.294; chiptune/breakcore and
+sparse-minimal clusters, see `scripts/eval_vocab_floor.py`) fall back to
+sigmoid(mean 20-anchor margin / 0.05) — same [0,1] scale, same 0.5
+neutral point.
+
+Cutoff semantics changed with the scale: scores are absolute calibrated
+probabilities, so `--min-score` is now an absolute threshold (default
+0.9), floored at 0.5 (neutral). The old `min_score × best` shape is gone
+— it made no sense on a calibrated scale and re-introduced §3's
+texture bias via `best`.
+
+Live-index measurements (`scripts/eval_vocab_cal.py`, 6152 tracks):
+
+| probe | exemplar | contrast rank | vocab-cal rank |
+|---|---|---|---|
+| dreamy, melancholic | TFS | 800 (median-margin era) / 1957 (re-measure) | **38** (0.986) |
+| dreamy, melancholic | Terminal Show | 1 | 112 (0.975) |
+| calm piano | Celeste | 1 | 6–8 (0.961–0.969) |
+
+Pass rates at the 0.9 cutoff: `dreamy, melancholic` 18.0%, `calm piano`
+0.9%. Top of `dreamy, melancholic` is now soft game-OST/ambient
+(SIGNALIS, TUNIC, Silent Hill 2 piano pieces, Binding of Isaac calm
+tracks, Portal 2) — the dense-texture bias at the top is visibly broken.
+Within-cohort ordering above TFS is percentile-consistent, i.e. the
+§1 absolute-scale gap is *bypassed at decision level*, not proven fixed:
+TFS still sits below ~0.6% of the library, but that residue is no longer
+texture-correlated by construction of the bar.
+
+Known trade-offs: vocab re-embedded per run (215 captions, seconds);
+two score regimes (percentile vs guard-sigmoid) mix in one ranking;
+`dark, aggressive` probe unmeasured (no exemplars).

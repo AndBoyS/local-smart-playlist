@@ -29,11 +29,6 @@ from local_smart_playlist.query.search import TextEmbedder
 W = IntVar("W")  # window count
 D = IntVar("D")  # embedding dim
 
-RANKER_CONTRAST = "contrast"
-RANKER_DOCS = "docs"
-RANKER_CHOICES = (RANKER_CONTRAST, RANKER_DOCS)
-# Median-margin scale differs from doc scores; floor tuned for query-vs-
-# baseline margins (most music sits near 0, strong fits reach 0.1+).
 CONTRAST_SCORE_FLOOR = 0.02
 
 # Broad mood anchors spanning the widest stylistic range the vocab's caption

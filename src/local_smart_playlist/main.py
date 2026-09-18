@@ -36,8 +36,9 @@ class PlayArgs(tap.TypedArgs):
         help="Peak-window weight for --seed-track ranking (0 = mean only, 1 = peak only); ignored for text queries",
     )
     min_score: float = tap.arg(
-        default=0.6,
-        help="Keep tracks scoring >= max(floor, fraction x best score) — fraction of the top score (default 0.6)",
+        default=0.9,
+        help="Absolute calibrated score cutoff in [0.5, 1): 0.5 = query fits as well as a typical "
+        "caption (neutral), 0.9 = clearly on-mood (default 0.9)",
     )
     dry: bool = tap.arg(help="Print the result without writing a playlist")
     db: Path | None = tap.arg(

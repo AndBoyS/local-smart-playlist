@@ -5,15 +5,15 @@ from pathlib import Path
 from local_smart_playlist.config import default_db_path, default_playlist_dir
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, embed_texts
 from local_smart_playlist.index.store import Store
-from local_smart_playlist.query.contrast import (
-    CONTRAST_SCORE_FLOOR,
-    baseline_vector,
-    query_vector_contrast,
-    rank_by_contrast,
-)
+from local_smart_playlist.query.contrast import baseline_vector, query_vector_contrast
 from local_smart_playlist.query.playlist import playlist_path, write_playlist
-from local_smart_playlist.query.prompts import LlmError, adapt_mood
+from local_smart_playlist.query.prompts import LlmError, adapt_mood, caption_vocab
 from local_smart_playlist.query.search import rank_by_similarity
+from local_smart_playlist.query.vocab_cal import (
+    VOCAB_SCORE_FLOOR,
+    rank_by_vocab_calibration,
+    vocab_vector_bank,
+)
 
 PREVIEW_COUNT = 10
 
@@ -61,17 +61,20 @@ class PlayArgs:
                         adapted = query  # offline fallback: embed the raw phrase
                 qvec = query_vector_contrast(adapted, embed_texts)
                 bvec = baseline_vector(embed_texts)
-                ranked = rank_by_contrast(
+                vocab_vecs = vocab_vector_bank(embed_texts, caption_vocab())
+                ranked = rank_by_vocab_calibration(
                     store,
                     query_vec=qvec,
-                    baseline_vec=bvec,
+                    vocab_vecs=vocab_vecs,
+                    margin_vec=bvec,
                     k=n if n is not None else store.track_count(),
                     exclude=exclude,
                 )
 
         if len(ranked) > 0:
-            best = ranked[0][1]
-            cutoff = max(CONTRAST_SCORE_FLOOR, min_score * best)
+            # Calibrated score is absolute: 0.5 = query fits as well as a typical
+            # caption (neutral), 0.9+ = clearly on-mood. No best-relative cutoff.
+            cutoff = max(VOCAB_SCORE_FLOOR, min_score)
             ranked = [(t, s) for t, s in ranked if s >= cutoff]
         if len(ranked) == 0:
             raise SystemExit("no tracks passed the score cutoff; lower --min-score")

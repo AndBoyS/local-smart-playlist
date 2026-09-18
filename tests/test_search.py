@@ -219,17 +219,19 @@ def test_ensure_documents_backfills_and_persists(tmp_path: Path) -> None:
     store = store_with(tmp_path)
     vocab = ["sad song", "happy song", "other song"]
     vocab_vecs = ensure_documents(store, fake_embedder, vocab=vocab)
-    docs = store.all_document_indices()
+    docs = {rel: [i for i, _ in pairs] for rel, pairs in store.all_documents().items()}
     assert set(docs) == {f"t{i}.mp3" for i in range(4)}
     # every track's mean is a basis vector, so its top document matches exactly
     for i in range(4):
         top = docs[f"t{i}.mp3"][0]
         assert np.allclose(vocab_vecs[top], fake_embedder([vocab[top]]))
+        if i < 2:  # t2/t3 have no matching vocab phrase: top doc sits at the noise floor
+            assert store.all_documents()[f"t{i}.mp3"][0][1] > 0.99
     # matching fingerprint: existing documents are left untouched
     store.set_meta("doc_vocab_sha", vocab_fingerprint(vocab))
     store.set_documents("t0.mp3", [(0, 1.0)])
     _ = ensure_documents(store, fake_embedder, vocab=vocab)
-    assert store.all_document_indices()["t0.mp3"] == [0]  # untouched
+    assert store.all_documents()["t0.mp3"] == [(0, 1.0)]  # untouched
 
 
 def test_rank_by_documents_orders_by_document_relevance(tmp_path: Path) -> None:
@@ -253,3 +255,20 @@ def test_rank_by_documents_respects_k_and_exclude(tmp_path: Path) -> None:
     rels = [t.rel_path for t, _ in ranked]
     assert "t0.mp3" not in rels
     assert len(ranked) == 2
+
+
+def test_rank_by_documents_weights_by_evidence(tmp_path: Path) -> None:
+    """Strong text match on weakly-evidenced phrase loses to well-evidenced phrase."""
+    store = Store(tmp_path / "ev.db", embed_dim=DIM)
+    # 'fit': mean is exactly the sad phrase vector -> evidence 1.0
+    upsert_track(store, "fit.mp3", np.stack([basis(0)] * 3))
+    # 'borderline': mean mostly happy, tiny sad component -> sad evidence ~0.24
+    mixed = (0.5 * basis(0) + 2.0 * basis(1)).astype(np.float32)
+    mixed = (mixed / float(np.linalg.norm(mixed))).astype(np.float32)
+    upsert_track(store, "borderline.mp3", np.stack([mixed] * 3))
+    vocab_vecs = ensure_documents(store, fake_embedder, vocab=["sad song", "happy song"], top_n=2)
+    ranked = rank_by_documents(store, query_vec=basis(0), vocab_vecs=vocab_vecs, k=2)
+    scores = {t.rel_path: s for t, s in ranked}
+    assert scores["fit.mp3"] > scores["borderline.mp3"]
+    # fit = 1.0 (evidence) x 1.0 (text cos); borderline ~0.24 x 1.0
+    assert scores["fit.mp3"] == pytest.approx(1.0, abs=1e-3)

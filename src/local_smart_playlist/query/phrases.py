@@ -75,19 +75,25 @@ def rank_by_documents(
     k: int,
     exclude: set[str] | None = None,
 ) -> list[tuple[TrackRow, float]]:
-    """Rank tracks by document relevance: max cos(query, track phrase document)."""
+    """Rank tracks by evidence-weighted document relevance.
+
+    Score = max over the track's documents of cos(query, phrase) * sim, where
+    *sim* is the audio->text evidence that the track actually exhibits the
+    phrase. A strong text match on a weakly-evidenced phrase cannot win.
+    """
     excluded = set() if exclude is None else set(exclude)
     qvec = np.asarray(query_vec, dtype=np.float64).ravel()
     vocab = np.asarray(vocab_vecs, dtype=np.float64)
     scored: list[tuple[TrackRow, float]] = []
-    for rel_path, doc_indices in store.all_document_indices().items():
+    for rel_path, docs in store.all_documents().items():
         if rel_path in excluded:
             continue
         track = store.get_track(rel_path)
         if track is None:
             continue
-        rows = vocab[np.asarray(doc_indices, dtype=np.intp)]
-        sims = np.asarray(rows @ qvec, dtype=np.float64).ravel()
-        scored.append((track, float(sims.max())))
+        indices = np.asarray([i for i, _ in docs], dtype=np.intp)
+        sims = np.asarray([s for _, s in docs], dtype=np.float64)
+        text_sims = np.asarray(vocab[indices] @ qvec, dtype=np.float64).ravel()
+        scored.append((track, float((text_sims * sims).max())))
     scored.sort(key=_score_of, reverse=True)
     return scored[:k]

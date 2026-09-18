@@ -170,11 +170,11 @@ def test_documents_roundtrip_and_lifecycle(store: Store) -> None:
     store.set_documents("b.mp3", [(1, 0.8)])
     assert store.tracks_with_documents() == {"a.mp3", "b.mp3"}
     # indices ordered best-sim first
-    assert store.all_document_indices() == {"a.mp3": [3, 7], "b.mp3": [1]}
+    assert store.all_documents() == {"a.mp3": [(3, 0.9), (7, 0.5)], "b.mp3": [(1, 0.8)]}
 
     # set_documents replaces
     store.set_documents("a.mp3", [(2, 0.4)])
-    assert store.all_document_indices()["a.mp3"] == [2]
+    assert store.all_documents()["a.mp3"] == [(2, 0.4)]
 
     # upsert invalidates documents (re-index requires re-extraction)
     upsert(store, "a.mp3", 2)

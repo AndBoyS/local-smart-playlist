@@ -308,12 +308,14 @@ class Store:
         rows = self._conn.execute("SELECT DISTINCT rel_path FROM documents").fetchall()
         return {cast("str", r[0]) for r in rows}
 
-    def all_document_indices(self) -> dict[str, list[int]]:
-        """Vocab indices of each track's phrase documents, best-sim first."""
-        rows = self._conn.execute("SELECT rel_path, phrase_idx FROM documents ORDER BY rel_path, sim DESC").fetchall()
-        out: dict[str, list[int]] = {}
-        for rel, idx in rows:
-            out.setdefault(cast("str", rel), []).append(cast("int", idx))
+    def all_documents(self) -> dict[str, list[tuple[int, float]]]:
+        """Vocab indices + sims of each track's phrase documents, best-sim first."""
+        rows = self._conn.execute(
+            "SELECT rel_path, phrase_idx, sim FROM documents ORDER BY rel_path, sim DESC"
+        ).fetchall()
+        out: dict[str, list[tuple[int, float]]] = {}
+        for rel, idx, sim in rows:
+            out.setdefault(cast("str", rel), []).append((cast("int", idx), cast("float", sim)))
         return out
 
     def clear_documents(self) -> None:

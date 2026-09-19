@@ -53,6 +53,11 @@ def fake_embedder() -> MuLanEmbedder[8]:
     return MuLanEmbedder(_FakeTextModel(), dim=DIM)
 
 
+def fake_load_model(**_: object) -> MuLanEmbedder[8]:
+    """Stand-in for load_model; accepts and ignores the production loader's kwargs."""
+    return fake_embedder()
+
+
 def fake_store(db: Path) -> Store:
     """Store stub with a small embed dim matching the fake embedder."""
     return Store(db, embed_dim=DIM)
@@ -116,7 +121,7 @@ def test_run_no_library_root(tmp_path: Path) -> None:
 
 
 def test_run_track_not_in_index(monkeypatch: Any, tmp_path: Path) -> None:
-    monkeypatch.setattr(describe_cmd, "load_model", fake_embedder)
+    monkeypatch.setattr(describe_cmd, "load_model", fake_load_model)
     monkeypatch.setattr(describe_cmd, "Store", fake_store)
     root = tmp_path / "lib"
     root.mkdir()
@@ -129,7 +134,7 @@ def test_run_track_not_in_index(monkeypatch: Any, tmp_path: Path) -> None:
 
 
 def test_run_describes_track(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
-    monkeypatch.setattr(describe_cmd, "load_model", fake_embedder)
+    monkeypatch.setattr(describe_cmd, "load_model", fake_load_model)
     monkeypatch.setattr(describe_cmd, "Store", fake_store)
     root = tmp_path / "lib"
     root.mkdir()

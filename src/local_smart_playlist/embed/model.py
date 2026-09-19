@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Protocol, cast, overload
+from typing import Any, Protocol, cast, overload
 
 import numpy as np
 import soxr
@@ -158,14 +158,57 @@ def _load_muq_safetensors(snapshot: Path) -> nn.Module:
     the GPU device is in play. Requires ``model.safetensors`` in the snapshot
     (written once by :func:`_convert_checkpoint`).
     """
-
     from muq import MuQMuLan  # pyrefly: ignore[implicit-reexport]
     from safetensors.torch import load_file
 
     config = json.loads((snapshot / "config.json").read_text(encoding="utf-8"))
-    model = MuQMuLan(config=config)
+    model: nn.Module = MuQMuLan(config=config)
     state = load_file(str(snapshot / "model.safetensors"))
-    _ = model.load_state_dict(state, assign=True)
+    _ = model.load_state_dict(state, strict=False, assign=True)
+    return model.eval()
+
+
+def _load_muq_safetensors_text_only(snapshot: Path) -> nn.Module:
+    """MuQ-MuLan text tower only: audio tower replaced by an inert stub.
+
+    Text-only commands (play/describe) never embed audio, so skipping the
+    audio transformer avoids its construction and ~2 GB of weights
+    (construct+assign: 0.1 s vs 3.8 s, latents bit-identical). Mirrors
+    ``create_MuLan_from_config``'s text half; audio weights stay unassigned
+    (``audio_to_latents`` remains random and unused — calling this model
+    with ``wavs=`` is undefined behavior by design). Also requires
+    ``model.safetensors``.
+    """
+    from types import SimpleNamespace
+
+    from muq import MuQMuLan  # pyrefly: ignore[implicit-reexport]
+    from muq.muq_mulan.models.mulan import MuLanModel
+    from muq.muq_mulan.models.text import TextTransformerPretrained
+    from safetensors.torch import load_file
+
+    config = json.loads((snapshot / "config.json").read_text(encoding="utf-8"))
+    text_transformer = TextTransformerPretrained(
+        model_name=cast("str", config["text_model"]["name"]),
+        model_dim=cast("int | None", config["text_model"]["model_dim"]),
+        **cast("dict[str, Any]", config["text_transformer"]),
+        frozen_pretrained=False,
+    )
+    audio_stub = SimpleNamespace(dim=cast("int", config["audio_transformer"]["dim"]), depth=0)
+    mulan = MuLanModel(
+        audio_transformer=cast("Any", audio_stub),
+        text_transformer=cast("Any", text_transformer),
+        **cast("dict[str, Any]", config["mulan"]),
+    )
+    model = MuQMuLan.__new__(MuQMuLan)
+    nn.Module.__init__(model)
+    model.config = config
+    model.mulan = mulan
+    model.sr = config["mulan"]["sr"]
+    model.clip_secs = config["mulan"]["clip_secs"]
+
+    state = load_file(str(snapshot / "model.safetensors"))
+    state = {key: tensor for key, tensor in state.items() if not key.startswith("mulan.audio")}
+    _ = model.load_state_dict(state, strict=False, assign=True)
     return model.eval()
 
 
@@ -200,7 +243,7 @@ def _from_hub() -> nn.Module:
         return MuQMuLan.from_pretrained(MODEL_ID).eval()
 
 
-def _load_weights(snapshot: Path | None) -> nn.Module:
+def _load_weights(snapshot: Path | None, *, text_only: bool = False) -> nn.Module:
     """Load MuQ-MuLan weights: safetensors fast path, else ``from_pretrained``.
 
     Pickle-only snapshot: convert to safetensors after loading (original
@@ -208,7 +251,8 @@ def _load_weights(snapshot: Path | None) -> nn.Module:
     """
     if snapshot is not None and (snapshot / "model.safetensors").is_file():
         try:
-            return _load_muq_safetensors(snapshot)
+            loader = _load_muq_safetensors_text_only if text_only else _load_muq_safetensors
+            return loader(snapshot)
         # corrupt/mismatched safetensors: hub loading recovers
         except Exception:
             logging.getLogger(__name__).warning("safetensors load failed; using from_pretrained", exc_info=True)
@@ -221,20 +265,22 @@ def _load_weights(snapshot: Path | None) -> nn.Module:
     return model
 
 
-def load_model(*, device: str | None = None) -> MuLanEmbedder[512]:
+def load_model(*, device: str | None = None, text_only: bool = False) -> MuLanEmbedder[512]:
     """Load MuQ-MuLan once per run; local HF cache first, downloads on first use only.
 
     Every run against a converted snapshot takes the fast path: mmap'd
-    safetensors weights assigned in place (~1.3 s), no pickle parse, no
-    2.5 GB copy. When the snapshot is cached, ``HF_HUB_OFFLINE`` is set
-    before the muq import so the tokenizer and sub-model loads skip hub
-    metadata checks. Pass ``device="cpu"`` for text-only paths (embedding
-    large audio batches is the only case where the GPU device wins).
+    safetensors weights assigned in place, no pickle parse, no 2.5 GB copy.
+    ``text_only=True`` skips the audio tower entirely (play/describe never
+    embed audio) — construction and memory drop accordingly. When the
+    snapshot is cached, ``HF_HUB_OFFLINE`` is set before the muq import so
+    the tokenizer and sub-model loads skip hub metadata checks. Pass
+    ``device="cpu"`` for text-only paths (embedding large audio batches is
+    the only case where the GPU device wins).
     """
     snapshot = _snapshot_dir(MODEL_ID)
     if snapshot is not None:
         _ = os.environ.setdefault("HF_HUB_OFFLINE", "1")
-    model = _load_weights(snapshot)
+    model = _load_weights(snapshot, text_only=text_only)
     _ = model.to(device if device is not None else pick_device())
     return MuLanEmbedder(model, dim=EMBED_DIM)
 

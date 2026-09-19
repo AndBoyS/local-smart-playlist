@@ -62,7 +62,7 @@ class PlayArgs:
                         adapted = adapt_mood(query)
                     except LlmError:
                         adapted = query  # offline fallback: embed the raw phrase
-                model = load_model(device="cpu")
+                model = load_model(device="cpu", text_only=True)
                 qvec = query_vector_contrast(adapted, model)
                 bvec = baseline_vector(model)
                 vocab_vecs = vocab_vector_bank_cached(store, model, vocab=caption_vocab())

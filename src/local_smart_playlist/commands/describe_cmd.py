@@ -62,7 +62,7 @@ class DescribeArgs:
             track = store.get_track(rel_path)
             if track is None:
                 raise SystemExit(f"track not in index: {path}")
-            model = load_model()
+            model = load_model(device="cpu", text_only=True)
             captions = rank_captions(model, mean_vec=track.mean_vec, vocab=prompts.caption_vocab(), top_n=n)
 
         rprint(f"[bold]{track.title}[/bold]  {track.duration:.1f}s  {track.n_windows} windows  {rel_path}")

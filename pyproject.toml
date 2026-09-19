@@ -10,6 +10,7 @@ dependencies = [
     "torchaudio",
     "soundfile>=0.13",
     "soxr",
+    "safetensors>=0.4.3",
     "numpy",
     "pyrefly-numpy-stubs",
     "sqlite-vec>=0.1.6",

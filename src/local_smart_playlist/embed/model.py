@@ -1,12 +1,16 @@
 """MuQ-MuLan model loading and window/text embedding."""
 
+import json
+import logging
+import os
 from pathlib import Path
-from typing import Protocol, overload
+from typing import Protocol, cast, overload
 
 import numpy as np
 import soxr
 import torch
 from shape_extensions import Int, IntTuple, IntVar
+from torch import nn
 
 from local_smart_playlist.audio.features import batches
 from local_smart_playlist.numpy_helpers import l2_normalize
@@ -120,43 +124,117 @@ def _hub_cache_dir() -> Path:
     return Path(hub_cache).expanduser()
 
 
-def _snapshot_present(model_id: str) -> bool:
-    """True when the HF cache holds a non-empty snapshot for *model_id*."""
+def _snapshot_dir(model_id: str) -> Path | None:
+    """Local snapshot dir for *model_id*, or None when not (plausibly) cached.
+
+    Pure filesystem check: importing huggingface_hub first would freeze its
+    ``HF_HUB_OFFLINE`` constant (read at import time) before load_model can
+    set it, re-enabling hub metadata checks in the tokenizer/sub-model loads.
+    """
 
     repo_dir = _hub_cache_dir() / ("models--" + model_id.replace("/", "--"))
     snapshots = repo_dir / "snapshots"
     if not snapshots.is_dir():
-        return False
+        return None
     ref = repo_dir / "refs" / "main"
+    candidates: list[Path] = []
     if ref.is_file():
-        commit = ref.read_text(encoding="utf-8").strip()
-        snap = snapshots / commit
-        return snap.is_dir() and any(snap.iterdir())
-    return any(s.is_dir() and any(s.iterdir()) for s in snapshots.iterdir())
+        candidates.append(snapshots / ref.read_text(encoding="utf-8").strip())
+    else:
+        candidates.extend(s for s in snapshots.iterdir() if s.is_dir())
+    for candidate in candidates:
+        if candidate.is_dir() and any(candidate.iterdir()):
+            return candidate
+    return None
+
+
+def _load_muq_safetensors(snapshot: Path) -> nn.Module:
+    """Build MuQMuLan directly and assign mmap'd safetensors weights (zero-copy).
+
+    Bypasses ``MuQMuLan.from_pretrained``: its safetensors path re-copies the
+    full 2.5 GB state dict into freshly initialized parameters (``copy_``),
+    which costs several seconds. ``load_state_dict(assign=True)`` swaps the
+    mmap-backed tensors in directly; ``.to(device)`` later still copies when
+    the GPU device is in play. Requires ``model.safetensors`` in the snapshot
+    (written once by :func:`_convert_checkpoint`).
+    """
+
+    from muq import MuQMuLan  # pyrefly: ignore[implicit-reexport]
+    from safetensors.torch import load_file
+
+    config = json.loads((snapshot / "config.json").read_text(encoding="utf-8"))
+    model = MuQMuLan(config=config)
+    state = load_file(str(snapshot / "model.safetensors"))
+    _ = model.load_state_dict(state, assign=True)
+    return model.eval()
+
+
+def _convert_checkpoint(snapshot: Path) -> None:
+    """One-time ``pytorch_model.bin → model.safetensors`` conversion, then delete the original.
+
+    Atomic: write to a temp file, rename, and only then unlink the pickle —
+    a failed or interrupted conversion leaves the cache untouched. The
+    pickle is recoverable from the Hub, but a corrupt safetensors would
+    otherwise be silently masked by a valid fallback.
+    """
+    from safetensors.torch import save_file
+
+    source = snapshot / "pytorch_model.bin"
+    target = snapshot / "model.safetensors"
+    tmp = target.with_suffix(".safetensors.tmp")
+    state: dict[str, torch.Tensor] = torch.load(source, map_location="cpu", weights_only=True, mmap=True)
+    clean = {key: tensor.contiguous() for key, tensor in state.items()}
+    save_file(clean, str(tmp), metadata={"format": "pt"})
+    _ = tmp.replace(target)
+    source.unlink()
+
+
+def _from_hub() -> nn.Module:
+    """``MuQMuLan.from_pretrained`` against the local cache; online download on cache miss."""
+    from muq import MuQMuLan  # pyrefly: ignore[implicit-reexport]
+
+    try:
+        return MuQMuLan.from_pretrained(MODEL_ID, local_files_only=True).eval()
+    except Exception:  # noqa: BLE001 — incomplete cache: fall back to the online download path
+        _ = os.environ.pop("HF_HUB_OFFLINE", None)
+        return MuQMuLan.from_pretrained(MODEL_ID).eval()
+
+
+def _load_weights(snapshot: Path | None) -> nn.Module:
+    """Load MuQ-MuLan weights: safetensors fast path, else ``from_pretrained``.
+
+    Pickle-only snapshot: convert to safetensors after loading (original
+    deleted after a clean write), so every later run takes the fast path.
+    """
+    if snapshot is not None and (snapshot / "model.safetensors").is_file():
+        try:
+            return _load_muq_safetensors(snapshot)
+        # corrupt/mismatched safetensors: hub loading recovers
+        except Exception:
+            logging.getLogger(__name__).warning("safetensors load failed; using from_pretrained", exc_info=True)
+    model = _from_hub()
+    if snapshot is not None:
+        try:
+            _convert_checkpoint(snapshot)
+        except Exception:
+            logging.getLogger(__name__).debug("checkpoint conversion skipped", exc_info=True)
+    return model
 
 
 def load_model(*, device: str | None = None) -> MuLanEmbedder[512]:
     """Load MuQ-MuLan once per run; local HF cache first, downloads on first use only.
 
-    When the snapshot is cached, ``HF_HUB_OFFLINE`` is set before the muq
-    import so the tokenizer and sub-model loads skip hub metadata checks.
-    Pass ``device="cpu"`` for text-only paths (embedding large audio batches
-    is the only case where the GPU device wins).
+    Every run against a converted snapshot takes the fast path: mmap'd
+    safetensors weights assigned in place (~1.3 s), no pickle parse, no
+    2.5 GB copy. When the snapshot is cached, ``HF_HUB_OFFLINE`` is set
+    before the muq import so the tokenizer and sub-model loads skip hub
+    metadata checks. Pass ``device="cpu"`` for text-only paths (embedding
+    large audio batches is the only case where the GPU device wins).
     """
-    import os
-
-    cached = _snapshot_present(MODEL_ID)
-    if cached:
+    snapshot = _snapshot_dir(MODEL_ID)
+    if snapshot is not None:
         _ = os.environ.setdefault("HF_HUB_OFFLINE", "1")
-    from muq import MuQMuLan  # pyrefly: ignore[implicit-reexport]
-
-    try:
-        model = MuQMuLan.from_pretrained(MODEL_ID, local_files_only=True)
-    # incomplete cache: fall back to the online download path
-    except Exception:
-        _ = os.environ.pop("HF_HUB_OFFLINE", None)
-        model = MuQMuLan.from_pretrained(MODEL_ID)
-    _ = model.eval()
+    model = _load_weights(snapshot)
     _ = model.to(device if device is not None else pick_device())
     return MuLanEmbedder(model, dim=EMBED_DIM)
 

@@ -8,7 +8,8 @@ kept as readout-only diagnostic). Numbers from the live index
 
 ## Current pipeline
 
-Text query → unit query vector (embedded as `{q}` and `{q} mood.`, averaged) →
+Text query → unit query vector (embedded exactly as written — the old
+`{q} mood.` variant was removed, it moved comma queries off soft textures) →
 per-window margin `cos(window, query) − mean_i cos(window, anchor_i)` over 20
 broad mood anchors (`MOOD_ANCHORS`, en+zh) → track score = **median** margin
 (coverage = share of positive windows, tiebreak) → cutoff
@@ -51,15 +52,29 @@ behavior. Its deficit is purely the lower absolute q-affinity the model
 assigns to soft game-synth texture; no aggregation change can recover a
 signal the model never produced.
 
-### 2. LLM query adaptation actively harms (unfixed)
+### 2. LLM query adaptation actively harms (fixed)
 
-`--llm` rewrites already-good comma lists: `'dreamy, melancholic' ->
+`--llm` used to rewrite already-good comma lists: `'dreamy, melancholic' ->
 'dreamy mood, melancholic mood.'`. Measured: TFS margin 0.120 → 0.040, rank
 799 → 2012. The added `mood` padding + rewording moves the vector off soft
 textures (difficulties §4 style constraint still applies). Raw comma lists
-beat every adapted form. Fix candidate: adapt prompt should pass through
-comma-attribute inputs unchanged (typos/translation only, never append
-"mood"/genre words). Not yet implemented.
+beat every adapted form.
+
+Fixed in `query/prompts.py` (`_ADAPT_PROMPT`) and
+`query/contrast.py` (`query_vector_contrast`): the prompt passes
+comma-attribute inputs through unchanged (typos/translation only, never
+append "mood"/genre words) and only rewrites free text into attributes;
+the static `"{q} mood."` embedding variant was removed — queries embed
+exactly as written.
+
+Padding re-check under the vocab-cal ranker (2026): appending `mood`
+(`'dreamy mood, melancholic mood.'`) is no longer uniformly worse — TFS
+rank 33 → 164 but Terminal Show 61 → 4, Celeste 53 → 30 — i.e. the padding
+penalty was a margin-ranker artifact; under vocab-cal it is just noise,
+not a consistent win. Attribute *invention* still strongly harms:
+`'melancholic mood, slow tempo, sparse piano.'` is a different query
+(cos 0.34), TFS 33 → 950, score 0.698 → dropped below the 0.9 cutoff;
+the prompt's no-invention rule is the load-bearing part.
 
 ### 3. Relative min-score re-introduces texture bias (unfixed)
 
@@ -87,7 +102,7 @@ pursued.
 
 | lever | expected effect | cost |
 |---|---|---|
-| LLM pass-through prompt (§2) | recovers ~0.08 margin on adapted queries | one prompt edit |
+| ~~LLM pass-through prompt (§2)~~ | done — prompt passes comma lists through | one prompt edit |
 | min-score default rethink (§3) | soft textures survive default cutoff | default change |
 | anchor bank edits | baseline quality; e.g. more texture-neutral anchors | data edit |
 | LLM reranker (parked by user) | per-track precision on top ~100 | LLM call per query |
@@ -95,8 +110,8 @@ pursued.
 
 ## Suggested next step
 
-~~Fix the `--llm` pass-through prompt~~ — superseded by §6: resolved by
-convention (don't pass `--llm` for canonical attribute lists). Remaining:
+~~Fix the `--llm` pass-through prompt~~ — done: prompt passes comma lists
+through unchanged and the static `{q} mood.` variant was removed. Remaining:
 revisit §3 cutoff semantics before touching the margin formula again —
 ranking order is now stable and sane; the cutoff decides what a playlist
 *is*.
@@ -127,13 +142,18 @@ Findings:
 - Conclusion: §1's absolute-scale gap is a whole-space property of
   MuQ-MuLan, not a correctable projection. All experiment code was
   reverted after measurement (ranker, CLI flags, debias module); the eval
-  harness (`scripts/eval_rank.py`) stays. §2 was resolved by convention
-  (below), no code change shipped.
+  harness (`scripts/eval_rank.py`) stays (it now runs the production
+  vocab-cal ranker, so §6's margin-rank table is historical). §2 is now
+  fixed in code (below), not just by convention.
 
-§2 resolved by convention, not code: the pass-through hack (comma-list
-detection in `adapt_mood`) was reverted — flag semantics stay honest, `--llm`
-adapts whatever it gets, and the user simply doesn't pass it for canonical
-attribute lists (measured harm: TFS margin 0.120 → 0.040, rank 799 → 2012).
+§2 later fixed in code (`query/prompts.py` `_ADAPT_PROMPT`): the prompt
+passes comma-attribute lists through unchanged (typos/translation only)
+and the static `"{q} mood."` embedding variant was removed — `--llm` for
+comma lists now equals the raw-phrase playlist. (Older finding, for the
+record: the pass-through hack in `adapt_mood` was first reverted in favor
+of convention — flag semantics were kept honest and users just didn't
+pass `--llm` for canonical attribute lists; measured harm: TFS margin
+0.120 → 0.040, rank 799 → 2012.)
 
 ## §7 Caption-vocab calibration ranker (2026 follow-up, shipped)
 

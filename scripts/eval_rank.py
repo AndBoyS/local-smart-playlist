@@ -15,11 +15,9 @@ from pathlib import Path
 
 from local_smart_playlist.embed.model import MODEL_ID, MuLanEmbedder, cap_torch_threads, load_model
 from local_smart_playlist.index.store import Store, TrackMeta
-from local_smart_playlist.query.contrast import (
-    baseline_vector,
-    query_vector_contrast,
-    rank_by_contrast,
-)
+from local_smart_playlist.query.contrast import baseline_vector, query_vector_contrast
+from local_smart_playlist.query.prompts import caption_vocab
+from local_smart_playlist.query.vocab_cal import VOCAB_SCORE_FLOOR, rank_by_vocab_calibration, vocab_vector_bank
 
 # Probe query -> case-insensitive substrings of exemplar tracks (rel_path or
 # title). Soft/dense exemplars from difficulties.md §1 measurements.
@@ -30,13 +28,23 @@ PROBES: dict[str, list[str]] = {
 }
 PREVIEW_COUNT = 5
 PERCENTILE_SCALE = 100.0
+DEFAULT_MIN_SCORE = 0.9  # sp play --min-score default; kept = score >= max(VOCAB_SCORE_FLOOR, this)
 
 
 def rank_full(store: Store, model: MuLanEmbedder[512], *, query: str) -> list[tuple[TrackMeta, float]]:
-    """Full-library sustained-mood ranking with the production ranker."""
+    """Full-library ranking with the production ranker (caption-vocab calibration)."""
     qvec = query_vector_contrast(query, model)
     bvec = baseline_vector(model)
-    return rank_by_contrast(store, query_vec=qvec, baseline_vec=bvec, k=store.track_count())
+    vocab_vecs = vocab_vector_bank(model, caption_vocab())
+    ranked = rank_by_vocab_calibration(
+        store,
+        query_vec=qvec,
+        vocab_vecs=vocab_vecs,
+        margin_vec=bvec,
+        k=store.track_count(),
+        exclude=set(),
+    )
+    return [(track, float(score)) for track, score in ranked]
 
 
 def report(ranked: list[tuple[TrackMeta, float]], *, query: str, exemplars: list[str]) -> None:
@@ -52,13 +60,14 @@ def report(ranked: list[tuple[TrackMeta, float]], *, query: str, exemplars: list
             continue
         rank0, score = hit
         pct = rank0 / total * PERCENTILE_SCALE if total > 0 else 0.0
+        kept = score >= max(VOCAB_SCORE_FLOOR, DEFAULT_MIN_SCORE)
         print(
             f"   exemplar {needle!r}: rank {rank0 + 1}/{total}"
-            f" ({pct:.1f}% from top)  score {score:+.3f}"
+            f" ({pct:.1f}% from top)  score {score:.3f}  kept={kept}"
         )
     print("   top preview:")
     for track, score in ranked[:PREVIEW_COUNT]:
-        print(f"     {score:+.3f}  {track.title}")
+        print(f"     {score:.3f}  {track.title}")
 
 
 def _matches(track: TrackMeta, needle: str) -> bool:

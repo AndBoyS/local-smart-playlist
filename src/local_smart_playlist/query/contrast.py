@@ -7,8 +7,8 @@ pieces remain live:
 - **MOOD_ANCHORS / baseline_vector**: the 20 broad-mood anchor bank and its
   unnormalized mean — used as the baseline in the guard fallback of the
   vocab-calibration ranker (tracks with uninformative vocab profiles).
-- **query_vector_contrast**: canonical query embedding ({q} + "{q} mood.",
-  averaged) — still how text queries become vectors.
+- **query_vector_contrast**: unit embedding of the query text — still how
+  text queries become vectors.
 - **contrast_score / rank_by_contrast**: the median-margin ranker, kept for
   ``scripts/eval_rank.py`` comparisons and tests only.
 
@@ -72,10 +72,15 @@ def baseline_vector(model: MuLanEmbedder[D], *, anchors: list[str] | None = None
 
 
 def query_vector_contrast(mood: str, model: MuLanEmbedder[D]) -> np.ndarray[[D]]:
-    """Embed *mood* as caption-style variants, averaged to one unit query vector."""
-    variants = [mood, f"{mood} mood."]
-    vecs = l2_normalize(model.embed_texts(variants))
-    return l2_normalize(vecs.mean(axis=0)[None, :])[0]
+    """Unit embedding of the query text, as written.
+
+    No caption-style rephrasing (`"{q} mood."`): appending "mood" moved
+    comma-attribute queries off soft textures (TFS margin 0.120 → 0.040,
+    difficulties.md §2), so the query embeds exactly as the user (or the
+    LLM pass-through) supplied it.
+    """
+    vecs = l2_normalize(model.embed_texts([mood]))
+    return vecs[0]
 
 
 @dataclass(frozen=True)

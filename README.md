@@ -1,7 +1,11 @@
 # local-smart-playlist
 
-Mood-based smart playlists for a local music library. MuQ-MuLan audio embeddings →
-rank tracks by text queries like `melancholic`, `moody late night`.
+Mood-based smart playlists for a local music library. MuQ-MuLan audio
+embeddings → rank tracks by text queries like `melancholic`,
+`moody late night`. Describe what you want in plain words — a single word,
+a comma list of attributes, or a free-text vibe — and `sp play` turns it
+into a playlist; with `--llm`, any OpenAI-compatible endpoint aligns your
+phrasing with the embedding model's caption style before ranking.
 
 ```console
 uv sync
@@ -46,10 +50,12 @@ alpha * max cos(query, window) + (1-alpha) * cos(query, track mean);
 Index DB defaults to `.sp-index/index.db` relative to the current working
 directory; override with `--db`.
 
-LLM query correction (`--llm`) uses any OpenAI-compatible endpoint. The LLM
-only adapts the query phrase for embedding (translation, typo/phrase
-normalization) — it never adds genres or moods not implied by the input, and
-the query stays one line. A failed LLM call falls back to the raw phrase:
+LLM query alignment (`--llm`) uses any OpenAI-compatible endpoint. It adapts
+your phrase for embedding only: free text becomes a comma-attribute caption;
+an already-comma-separated attribute list passes through unchanged (typo and
+translation fixes only). It never adds genres or moods not implied by the
+input — appended padding like `mood` measurably worsens retrieval. A failed
+LLM call falls back to the raw phrase:
 
 ```
 SP_LLM_BASE_URL  # default https://opencode.ai/zen/go/v1 (OpenCode Go)

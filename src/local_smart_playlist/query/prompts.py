@@ -1,4 +1,8 @@
-"""Mood word → LLM caption correction (OpenAI-compatible endpoint)."""
+"""Mood query → LLM correction (OpenAI-compatible endpoint).
+
+Free text becomes a comma-attribute caption; existing comma-attribute lists
+pass through unchanged (typos/translation only)
+"""
 
 import logging
 import os
@@ -25,15 +29,19 @@ def caption_vocab() -> list[str]:
 
 
 _ADAPT_PROMPT = (
-    "You rewrite a user's music mood query as ONE attribute caption in the "
-    "format used to train a music-text embedding model (MuQ-MuLan): "
-    "comma-separated lowercase attributes — mood, genre, instrument, tempo, "
-    "vocals — ending with a period. Example input 'sad rainy morning' → "
-    "output 'melancholic mood, slow tempo, sparse piano.'.\n\n"
-    "Translate non-English text, fix typos, normalize phrasing. Express every "
-    "meaning element of the input as an attribute; never add styles, "
-    "instruments or moods the input does not imply. Keep it one short line, "
-    "no quotes, no commentary, nothing but the caption."
+    "You rewrite a user's music mood query for a music-text embedding model "
+    "(MuQ-MuLan), trained on comma-separated lowercase attribute captions.\n\n"
+    "If the input is already a comma-separated attribute list (e.g. "
+    "'dreamy, melancholic'), return it UNCHANGED: translate non-English text "
+    "and fix typos only. Never append 'mood' or a period, never reword, "
+    "reorder or expand it — adding words measurably worsens retrieval.\n\n"
+    "If the input is free text (a sentence, a scene, a vibe), express every "
+    "meaning element of it as comma-separated lowercase attributes — mood, "
+    "genre, instrument, tempo, vocals — ending with a period. Example input "
+    "'sad rainy morning' → output 'rainy, melancholic, morning.'. Never add "
+    "styles, instruments or moods the input does not imply.\n\n"
+    "Keep the output one short line, no quotes, no commentary, nothing but "
+    "the rewritten query."
 )
 
 

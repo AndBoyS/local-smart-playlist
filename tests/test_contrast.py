@@ -100,12 +100,10 @@ def test_baseline_is_mean_of_anchor_affinities() -> None:
     assert np.linalg.norm(bvec) < 0.9
     qvec = query_vector_contrast("dreamy", _hash_embedder())
     assert np.allclose(np.linalg.norm(qvec), 1.0, atol=1e-5)
-    # averaging {dreamy, "dreamy mood."} with a hashed-basis embedder yields the
-    # plain first-basis projection of both variants
-    direct = fake_embedder(["dreamy", "dreamy mood."])
-    expected = direct.mean(axis=0)
-    expected = expected / float(np.linalg.norm(expected))
-    assert np.allclose(qvec, expected, atol=1e-5)
+    # query embeds exactly as written — no second "mood." variant
+    direct = np.asarray(fake_embedder(["dreamy"]), dtype=np.float64)
+    direct = direct / float(np.linalg.norm(direct))
+    assert np.allclose(qvec, direct, atol=1e-5)
 
 
 def test_contrast_score_subtracts_baseline() -> None:

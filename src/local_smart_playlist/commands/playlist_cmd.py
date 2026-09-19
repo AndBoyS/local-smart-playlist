@@ -12,7 +12,7 @@ from local_smart_playlist.query.search import rank_by_similarity
 from local_smart_playlist.query.vocab_cal import (
     VOCAB_SCORE_FLOOR,
     rank_by_vocab_calibration,
-    vocab_vector_bank,
+    vocab_vector_bank_cached,
 )
 
 PREVIEW_COUNT = 10
@@ -62,10 +62,10 @@ class PlayArgs:
                         adapted = adapt_mood(query)
                     except LlmError:
                         adapted = query  # offline fallback: embed the raw phrase
-                model = load_model()
+                model = load_model(device="cpu")
                 qvec = query_vector_contrast(adapted, model)
                 bvec = baseline_vector(model)
-                vocab_vecs = vocab_vector_bank(model, caption_vocab())
+                vocab_vecs = vocab_vector_bank_cached(store, model, vocab=caption_vocab())
                 ranked = rank_by_vocab_calibration(
                     store,
                     query_vec=qvec,

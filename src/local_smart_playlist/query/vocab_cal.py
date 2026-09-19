@@ -24,12 +24,15 @@ Ranking is a full-library scan over stored window vectors; the vocab must be
 re-embedded per run (215 captions, a few seconds), no re-index needed.
 """
 
+import base64
+import hashlib
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 from shape_extensions import IntVar
 
-from local_smart_playlist.embed.model import MuLanEmbedder
+from local_smart_playlist.embed.model import MODEL_ID, MuLanEmbedder
 from local_smart_playlist.index.store import Store, TrackMeta
 from local_smart_playlist.numpy_helpers import gt, l2_normalize
 
@@ -56,6 +59,48 @@ def vocab_vector_bank(model: MuLanEmbedder[D], vocab: list[str]) -> np.ndarray[[
     """Unit-norm embeddings of the caption vocabulary, one row per caption."""
     vecs = np.asarray(model.embed_texts(vocab), dtype=np.float32)
     return l2_normalize(vecs)
+
+
+def _vocab_bank_key(vocab: list[str]) -> str:
+    """Meta key pinning the cached bank to vocab content and embedding model."""
+    digest = hashlib.sha1("\n".join(vocab).encode("utf-8")).hexdigest()
+    return f"vocab_vecs:{MODEL_ID}:{digest}"
+
+
+def _encode_bank(vecs: np.ndarray[[V, D]]) -> str:
+    """float32 bytes → base64, for the meta table's TEXT column."""
+    return base64.b64encode(np.ascontiguousarray(vecs, dtype=np.float32).tobytes()).decode("ascii")
+
+
+def _decode_bank(*, blob: str, dim: int, n: int) -> np.ndarray[[V, D]] | None:
+    """Inverse of :func:`_encode_bank`; None when the payload shape does not fit."""
+    try:
+        arr = np.frombuffer(base64.b64decode(blob, validate=True), dtype=np.float32)
+    except ValueError:
+        return None
+    if arr.size != n * dim:
+        return None
+    # reshape of an unshaped-frombuffer array is a stub gap; copy() first for ownership.
+    return cast("np.ndarray[[V, D]]", arr.copy().reshape(n, dim))
+
+
+def vocab_vector_bank_cached(store: Store, model: MuLanEmbedder[D], *, vocab: list[str]) -> np.ndarray[[V, D]]:
+    """Unit-norm vocab embeddings, cached in the store's meta table.
+
+    Hit: decoded from meta (row count and dim validated against the request).
+    Miss: embed the 215 captions once (~1 s) and persist for every later run.
+    The key hashes the vocab text and model id, so vocab or model changes
+    invalidate silently.
+    """
+    key = _vocab_bank_key(vocab)
+    cached = store.get_meta(key)
+    if cached is not None:
+        vecs = _decode_bank(blob=cached, dim=model.dim, n=len(vocab))
+        if vecs is not None:
+            return vecs
+    vecs = vocab_vector_bank(model, vocab)
+    store.set_meta(key, _encode_bank(vecs))
+    return vecs
 
 
 @dataclass(frozen=True)

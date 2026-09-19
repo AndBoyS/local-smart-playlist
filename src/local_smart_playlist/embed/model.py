@@ -1,5 +1,6 @@
 """MuQ-MuLan model loading and window/text embedding."""
 
+from pathlib import Path
 from typing import Protocol, overload
 
 import numpy as np
@@ -96,13 +97,67 @@ class MuLanEmbedder[D: IntVar]:
         return l2_normalize(out)
 
 
-def load_model() -> MuLanEmbedder[512]:
-    """Load MuQ-MuLan once per run (downloads the checkpoint from the HF cache on first use)."""
+def _hub_cache_dir() -> Path:
+    """HF cache dir, resolved the way huggingface_hub resolves it — without importing it.
+
+    Mirrors ``huggingface_hub/constants.py``: HF_HUB_CACHE → legacy
+    HUGGINGFACE_HUB_CACHE → $HF_HOME/hub → $XDG_CACHE_HOME (default
+    ``~/.cache``) + huggingface + /hub. Importing the constants module first
+    would freeze the ``HF_HUB_OFFLINE`` constant before load_model sets it.
+    """
+    import os
+
+    hub_cache = os.environ.get("HF_HUB_CACHE")
+    if hub_cache is None:
+        hub_cache = os.environ.get("HUGGINGFACE_HUB_CACHE")
+    if hub_cache is None:
+        hf_home = os.environ.get("HF_HOME")
+        if hf_home is None:
+            xdg = os.environ.get("XDG_CACHE_HOME")
+            cache_root = Path(xdg) if xdg is not None else Path.home() / ".cache"
+            hf_home = str(cache_root / "huggingface")
+        hub_cache = str(Path(hf_home) / "hub")
+    return Path(hub_cache).expanduser()
+
+
+def _snapshot_present(model_id: str) -> bool:
+    """True when the HF cache holds a non-empty snapshot for *model_id*."""
+
+    repo_dir = _hub_cache_dir() / ("models--" + model_id.replace("/", "--"))
+    snapshots = repo_dir / "snapshots"
+    if not snapshots.is_dir():
+        return False
+    ref = repo_dir / "refs" / "main"
+    if ref.is_file():
+        commit = ref.read_text(encoding="utf-8").strip()
+        snap = snapshots / commit
+        return snap.is_dir() and any(snap.iterdir())
+    return any(s.is_dir() and any(s.iterdir()) for s in snapshots.iterdir())
+
+
+def load_model(*, device: str | None = None) -> MuLanEmbedder[512]:
+    """Load MuQ-MuLan once per run; local HF cache first, downloads on first use only.
+
+    When the snapshot is cached, ``HF_HUB_OFFLINE`` is set before the muq
+    import so the tokenizer and sub-model loads skip hub metadata checks.
+    Pass ``device="cpu"`` for text-only paths (embedding large audio batches
+    is the only case where the GPU device wins).
+    """
+    import os
+
+    cached = _snapshot_present(MODEL_ID)
+    if cached:
+        _ = os.environ.setdefault("HF_HUB_OFFLINE", "1")
     from muq import MuQMuLan  # pyrefly: ignore[implicit-reexport]
 
-    model = MuQMuLan.from_pretrained(MODEL_ID)
+    try:
+        model = MuQMuLan.from_pretrained(MODEL_ID, local_files_only=True)
+    # incomplete cache: fall back to the online download path
+    except Exception:
+        _ = os.environ.pop("HF_HUB_OFFLINE", None)
+        model = MuQMuLan.from_pretrained(MODEL_ID)
     _ = model.eval()
-    _ = model.to(pick_device())
+    _ = model.to(device if device is not None else pick_device())
     return MuLanEmbedder(model, dim=EMBED_DIM)
 
 

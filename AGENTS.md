@@ -14,7 +14,7 @@ Guidelines for coding agents working in this repo.
 
 ## Conventions
 
-- Paths in and out of the CLI: `pathlib.Path` only.
+- Paths via `pathlib`.
 - Audio: mono float32, 48 kHz everywhere after `decode.decode_mono`.
 - Track identity: POSIX relative path from library root (stable across
   re-indexes). Never store absolute paths in the DB.
@@ -32,12 +32,17 @@ Guidelines for coding agents working in this repo.
   `audio/features.py`, `audio/windowing.py`, `audio/decode.py`, `index/store.py`,
   `query/search.py`, `query/contrast.py`, `query/vocab_cal.py`, `query/phrases.py`,
   `commands/describe_cmd.py`) use pyrefly shape
-  types (`np.ndarray[[N, D]]` + `shape_extensions.IntVar`, one `IntVar` per line —
-  tuple-assignment breaks the binding; IntVars are function-signature only —
-  dataclass fields reject them). `embed/model.py` torch boundary stays
-  unannotated/`Any`. Every pyrefly suppression must name its error code —
-  `# pyrefly: ignore[<code>]` — bare `# pyrefly: ignore` is not allowed (same
-  rule as ruff's PGH). Known stub gaps, with the code to use at each site:
+  types (`np.ndarray[[N, D]]` + `shape_extensions.IntVar`; declare one `IntVar`
+  per line — tuple-assignment breaks the binding). IntVars bind inside function
+  signatures only: class-body annotations reject module-level IntVars
+  (`invalid-type-var`) and so do local-variable annotations inside function
+  bodies. Dataclasses holding shaped arrays are PEP 695 generic classes instead
+  (`class TrackRow[D: IntVar]` with `mean_vec: np.ndarray[[D]]`); consumers must
+  parameterize them (`TrackRow[D]` — bare `TrackRow` is `implicit-any-type-`
+  `argument` under strict). Explicit PEP 695 params (`[N: IntVar, D: IntVar]`)
+  always work, in defs and classes alike.
+  Every pyrefly suppression must name its error code — `# pyrefly: ignore[<code>]`.
+  Known stub gaps, with the code to use at each site:
   - `# pyrefly: ignore[unsupported-operation]`: `__setitem__` on shape-typed
     arrays (facebook/pyrefly#4901), ndarray comparison dunders, reshape without
     reshape/astype.

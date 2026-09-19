@@ -48,7 +48,7 @@ def rank_hybrid(
     k: int,
     exclude: set[str] | None = None,
     alpha: float = PEAK_WEIGHT,
-) -> list[tuple[TrackRow, float]]:
+) -> list[tuple[TrackRow[D], float]]:
     """Two-stage ranking: track-mean prefilter, then exact peak-window rescore.
 
     Score = alpha * max cos(query, window) + (1 - alpha) * cos(query, track mean).
@@ -72,7 +72,7 @@ def rank_hybrid(
     cand_paths = [c.rel_path for c in candidates if c.rel_path not in excluded]
     windows = store.load_windows(cand_paths)
 
-    scored: list[tuple[TrackRow, float]] = []
+    scored: list[tuple[TrackRow[D], float]] = []
     for cand in candidates:
         if cand.rel_path in excluded:
             continue
@@ -88,7 +88,7 @@ def rank_hybrid(
         )
         scored.append((track, score))
 
-    def by_score(entry: tuple[TrackRow, float]) -> float:
+    def by_score(entry: tuple[TrackRow[D], float]) -> float:
         return entry[1]
 
     scored.sort(key=by_score, reverse=True)
@@ -97,6 +97,6 @@ def rank_hybrid(
 
 def rank_by_similarity(
     store: Store, seed_vec: np.ndarray[[D]], *, k: int, exclude: set[str] | None = None, alpha: float = PEAK_WEIGHT
-) -> list[tuple[TrackRow, float]]:
+) -> list[tuple[TrackRow[D], float]]:
     """Same two-stage path, driven by a seed track vector instead of a text query."""
     return rank_hybrid(store, seed_vec, k=k, exclude=exclude, alpha=alpha)

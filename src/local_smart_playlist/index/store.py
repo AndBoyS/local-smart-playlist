@@ -72,10 +72,12 @@ class TrackMeta:
 
 
 @dataclass(frozen=True)
-class TrackRow:
+class TrackRow[D: IntVar]:
+    """Full track record; vector payloads carry the store's embedding dim."""
+
     rel_path: str
-    mean_vec: np.ndarray
-    p90_vec: np.ndarray
+    mean_vec: np.ndarray[[D]]
+    p90_vec: np.ndarray[[D]]
     n_windows: int
     duration: float
     title: str
@@ -332,7 +334,7 @@ class Store:
             for r in rows
         ]
 
-    def get_track(self, rel_path: str) -> TrackRow | None:
+    def get_track(self, rel_path: str) -> TrackRow[D] | None:
         row = self._conn.execute(
             "SELECT rel_path, mean_vec, p90_vec, n_windows, duration, title, model FROM tracks WHERE rel_path = ?",
             (rel_path,),

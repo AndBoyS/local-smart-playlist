@@ -19,10 +19,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
+from shape_extensions import IntVar
 
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
 from local_smart_playlist.index.store import Store, TrackRow
 from local_smart_playlist.query.contrast import MOOD_ANCHORS, query_vector_contrast
+
+D = IntVar("D")  # embedding dim
 
 PROBES: dict[str, list[str]] = {
     "dreamy, melancholic": ["To Far Shores", "The Terminal Show"],
@@ -104,7 +107,7 @@ def make_variants(twin_idx: int) -> list[Variant]:
     return variants
 
 
-def _matches(track: TrackRow, needle: str) -> bool:
+def _matches(track: TrackRow[D], needle: str) -> bool:
     needle_l = needle.lower()
     return needle_l in track.rel_path.lower() or needle_l in track.title.lower()
 
@@ -143,7 +146,7 @@ def main() -> None:
         model = load_model()
         anchor_vecs = _unit(np.asarray(model.embed_texts(list(MOOD_ANCHORS)), dtype=np.float32))
         windows_all = store.load_windows(store.track_rel_paths())
-        tracks: list[tuple[TrackRow, np.ndarray]] = []
+        tracks = []
         for rel_path in store.track_rel_paths():
             track = store.get_track(rel_path)
             window_vecs = windows_all.get(rel_path)

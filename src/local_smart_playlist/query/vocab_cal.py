@@ -31,6 +31,7 @@ from shape_extensions import IntVar
 
 from local_smart_playlist.embed.model import MuLanEmbedder
 from local_smart_playlist.index.store import Store, TrackMeta
+from local_smart_playlist.numpy_helpers import gt, l2_normalize
 
 W = IntVar("W")  # window count
 D = IntVar("D")  # embedding dim
@@ -54,9 +55,7 @@ NEUTRAL = 0.5
 def vocab_vector_bank(model: MuLanEmbedder[D], vocab: list[str]) -> np.ndarray[[V, D]]:
     """Unit-norm embeddings of the caption vocabulary, one row per caption."""
     vecs = np.asarray(model.embed_texts(vocab), dtype=np.float32)
-    norms = np.linalg.norm(vecs, axis=-1, keepdims=True)
-    safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore[unknown-argument-type]
-    return vecs / safe
+    return l2_normalize(vecs)
 
 
 @dataclass(frozen=True)
@@ -81,19 +80,21 @@ def vocab_calibration_score(
     a sigmoid of the mean 20-anchor margin (fallback for uninformative
     profiles). Coverage = share of windows above the 0.5 neutral point.
     """
-    sims_q = (window_vecs @ query_vec).astype(np.float64).ravel()
+    sims_q = (window_vecs @ query_vec).astype(np.float64)
     sims_v = (window_vecs @ vocab_vecs.T).astype(np.float64)
     best_vocab = float(sims_v.max())
     if best_vocab < VOCAB_COVER_FLOOR:
-        margins = sims_q - (window_vecs @ margin_vec).astype(np.float64).ravel()
+        sims_m = (window_vecs @ margin_vec).astype(np.float64)
+        margins: np.ndarray[[W, 1]] = sims_q[:, None] - sims_m[:, None]
         z = margins.mean() / MARGIN_TAU
         score = float(1.0 / (1.0 + np.exp(-z)))
-        coverage = sum(1 for m in margins.tolist() if m > 0.0) / len(margins.tolist())
+        coverage = float(gt(margins, 0.0).mean())
     else:
-        beaten = np.asarray(sims_q[:, None] > sims_v, dtype=np.float64)  # pyrefly: ignore[unsupported-operation]
-        percentiles = (beaten.sum(axis=1) / float(vocab_vecs.shape[0])).ravel()
+        # pyrefly: ignore [bad-assignment, unsupported-operation]
+        beaten: np.ndarray[[W, V]] = sims_q[:, None] > sims_v
+        percentiles: np.ndarray[[W, 1]] = beaten.mean(axis=1)[:, None]
         score = float(percentiles.mean())
-        coverage = sum(1 for p in percentiles.tolist() if p > NEUTRAL) / len(percentiles.tolist())
+        coverage = float(gt(percentiles, NEUTRAL).mean())
     return VocabCalScore(score=score, coverage=coverage)
 
 
@@ -113,8 +114,6 @@ def rank_by_vocab_calibration(
     per-window percentile (or fallback sigmoid margin for guard tracks).
     """
     excluded = set() if exclude is None else set(exclude)
-    qvec = np.asarray(query_vec, dtype=np.float32).ravel()
-    mvec = np.asarray(margin_vec, dtype=np.float32).ravel()
     windows = store.load_windows(store.track_rel_paths())
 
     scored: list[tuple[TrackMeta, float, float, str]] = []
@@ -124,9 +123,7 @@ def rank_by_vocab_calibration(
         window_vecs = windows.get(track.rel_path)
         if window_vecs is None or window_vecs.shape[0] == 0:
             continue  # track without stored windows must be re-indexed
-        result = vocab_calibration_score(
-            window_vecs, query_vec=qvec, vocab_vecs=vocab_vecs, margin_vec=mvec
-        )
+        result = vocab_calibration_score(window_vecs, query_vec=query_vec, vocab_vecs=vocab_vecs, margin_vec=margin_vec)
         scored.append((track, result.score, result.coverage, track.rel_path))
 
     scored.sort(key=lambda entry: (-entry[1], -entry[2], entry[3]))

@@ -31,7 +31,7 @@ Guidelines for coding agents working in this repo.
 - NumPy shape annotations: numpy-touching modules (`embed/aggregate.py`,
   `audio/features.py`, `audio/windowing.py`, `audio/decode.py`, `index/store.py`,
   `query/search.py`, `query/contrast.py`, `query/vocab_cal.py`, `query/phrases.py`,
-  `commands/describe_cmd.py`) use pyrefly shape
+  `numpy_helpers.py`, `commands/describe_cmd.py`) use pyrefly shape
   types (`np.ndarray[[N, D]]` + `shape_extensions.IntVar`; declare one `IntVar`
   per line — tuple-assignment breaks the binding). IntVars bind inside function
   signatures only: class-body annotations reject module-level IntVars

@@ -1,6 +1,7 @@
 """SQLite + sqlite-vec track vector store."""
 
 import sqlite3
+from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -226,7 +227,7 @@ class Store:
 
     def load_windows(self, rel_paths: Iterable[str]) -> dict[str, np.ndarray[[W, D]]]:
         """All window vectors grouped by rel_path, in window order."""
-        out: dict[str, list[np.ndarray[[D]]]] = {}
+        out: defaultdict[str, list[np.ndarray[[D]]]] = defaultdict(list)
         ids = list(rel_paths)
         chunk_size = 400  # sqlite variable limit headroom
         for start in range(0, len(ids), chunk_size):
@@ -241,7 +242,9 @@ class Store:
                 chunk,
             ).fetchall()
             for rel, _idx, blob in rows:
-                out.setdefault(cast("str", rel), []).append(_deserialize(cast("bytes", blob), self._embed_dim))
+                assert isinstance(rel, str)
+                assert isinstance(blob, bytes)
+                out[rel].append(_deserialize(blob, self._embed_dim))
         return {rel: np.stack(vecs) for rel, vecs in out.items()}
 
     def record_failure(self, *, rel_path: str, error: str, now: str) -> None:

@@ -27,10 +27,10 @@ from shape_extensions import IntVar
 
 from local_smart_playlist.embed.model import MuLanEmbedder
 from local_smart_playlist.index.store import Store, TrackMeta
+from local_smart_playlist.numpy_helpers import l2_normalize
 
 W = IntVar("W")  # window count
 D = IntVar("D")  # embedding dim
-B = IntVar("B")  # bank rows (anchors / caption variants)
 
 # Broad mood anchors spanning the widest stylistic range the vocab's caption
 # style covers (en + zh). Their mean approximates "music in general"; window
@@ -59,12 +59,6 @@ MOOD_ANCHORS: list[str] = [
 ]
 
 
-def _unit(vecs: np.ndarray[[B, D]]) -> np.ndarray[[B, D]]:
-    norms = np.linalg.norm(vecs, axis=-1, keepdims=True)
-    safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore[unknown-argument-type]
-    return vecs / safe
-
-
 def baseline_vector(model: MuLanEmbedder[D], *, anchors: list[str] | None = None) -> np.ndarray[[D]]:
     """Unnormalized mean of unit broad-mood anchor embeddings.
 
@@ -73,15 +67,15 @@ def baseline_vector(model: MuLanEmbedder[D], *, anchors: list[str] | None = None
     centroid would inflate the baseline by 1/‖centroid‖ (~2–3x for a diverse
     anchor set) and bury gentle textures under the broad baseline.
     """
-    vecs = _unit(np.asarray(model.embed_texts(list(MOOD_ANCHORS if anchors is None else anchors)), dtype=np.float32))
+    vecs = l2_normalize(model.embed_texts(list(MOOD_ANCHORS if anchors is None else anchors)))
     return vecs.mean(axis=0)
 
 
 def query_vector_contrast(mood: str, model: MuLanEmbedder[D]) -> np.ndarray[[D]]:
     """Embed *mood* as caption-style variants, averaged to one unit query vector."""
     variants = [mood, f"{mood} mood."]
-    vecs = _unit(np.asarray(model.embed_texts(variants), dtype=np.float32))
-    return _unit(vecs.mean(axis=0)[None, :])[0]
+    vecs = l2_normalize(model.embed_texts(variants))
+    return l2_normalize(vecs.mean(axis=0)[None, :])[0]
 
 
 @dataclass(frozen=True)
@@ -134,8 +128,6 @@ def rank_by_contrast(
     coverage. The returned score is the median margin.
     """
     excluded = set() if exclude is None else set(exclude)
-    qvec = np.asarray(query_vec, dtype=np.float32).ravel()
-    bvec = np.asarray(baseline_vec, dtype=np.float32).ravel()
     windows = store.load_windows(store.track_rel_paths())
 
     scored: list[tuple[TrackMeta, float, float, str]] = []
@@ -145,7 +137,7 @@ def rank_by_contrast(
         window_vecs = windows.get(track.rel_path)
         if window_vecs is None or window_vecs.shape[0] == 0:
             continue  # track without stored windows must be re-indexed
-        result = contrast_score(window_vecs, query_vec=qvec, baseline_vec=bvec)
+        result = contrast_score(window_vecs, query_vec=query_vec, baseline_vec=baseline_vec)
         scored.append((track, result.median_margin, result.coverage, track.rel_path))
 
     scored.sort(key=lambda entry: (-entry[1], -entry[2], entry[3]))

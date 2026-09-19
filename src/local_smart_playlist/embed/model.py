@@ -8,6 +8,7 @@ import torch
 from shape_extensions import Int, IntTuple, IntVar
 
 from local_smart_playlist.audio.features import batches
+from local_smart_playlist.numpy_helpers import l2_normalize
 
 W = IntVar("W")  # samples per window at 48 kHz
 W24 = IntVar("W24")  # samples per window after resample to 24 kHz
@@ -24,12 +25,6 @@ def pick_device() -> str:
     if mps.is_available():
         return "mps"
     return "cpu"
-
-
-def _unit[N: IntVar, D: IntVar](vectors: np.ndarray[[N, D]]) -> np.ndarray[[N, D]]:
-    norms = np.linalg.norm(vectors, axis=-1, keepdims=True)
-    safe = np.where(norms == 0.0, 1.0, norms)  # pyrefly: ignore[unknown-argument-type]
-    return vectors / safe
 
 
 def _to_24k(windows: list[np.ndarray[[W]]]) -> list[np.ndarray[[W24]]]:
@@ -78,7 +73,7 @@ class MuLanEmbedder[D: IntVar]:
 
         with torch.no_grad():
             raw = torch_to_numpy(self.model(texts=list(texts)))
-        return _unit(np.asarray(raw, dtype=np.float32))
+        return l2_normalize(raw)
 
     def embed_windows[W2: IntVar, N2: IntVar](
         self, windows: list[np.ndarray[[W2]]], *, batch_size: int = 16
@@ -98,7 +93,7 @@ class MuLanEmbedder[D: IntVar]:
                 # numpy shape stubs lack __setitem__ (facebook/pyrefly#4901); slice-assign is valid at runtime.
                 out[i * batch_size : i * batch_size + len(batch)] = raw  # pyrefly: ignore[unsupported-operation]
 
-        return _unit(out)
+        return l2_normalize(out)
 
 
 def load_model() -> MuLanEmbedder[512]:

@@ -8,7 +8,7 @@ from shape_extensions import IntVar
 
 from local_smart_playlist.index.store import Store, TrackRow
 
-W = IntVar("W")  # window count per track
+T = IntVar("T")  # total windows across candidate tracks
 D = IntVar("D")  # embedding dim
 
 PEAK_WEIGHT = 0.7  # alpha: peak-window vs track-mean blend
@@ -22,23 +22,42 @@ class _Candidate:
     mean_sim: float
 
 
-def _score_track(
+def _rescore_flat(
     *,
-    rel_path: str,
-    mean_sim: float,
-    window_vecs: np.ndarray[[W, D]] | None,
+    paths: list[str],
+    big: np.ndarray[[T, D]],
+    counts: list[int],
     query_vec: np.ndarray[[D]],
     alpha: float,
-) -> float:
-    """alpha * peak-window cos + (1 - alpha) * track-mean cos."""
-    if window_vecs is None:
-        return mean_sim  # legacy track without stored windows
-    sims = np.asarray(window_vecs @ query_vec, dtype=np.float64)
-    peak = float(sims.max())
-    mean_vec = window_vecs.mean(axis=0).astype(np.float64)
-    mean_norm = float(np.linalg.norm(mean_vec))
-    mean_sim_exact = float(mean_vec @ query_vec) / mean_norm if mean_norm > 0.0 else 0.0
-    return alpha * peak + (1.0 - alpha) * mean_sim_exact
+) -> dict[str, float]:
+    """Batched alpha * peak-window cos + (1 - alpha) * track-mean cos.
+
+    One [total_windows, D] @ q matmul instead of one small matmul per track;
+    track blocks are contiguous rows, so per-track peak/mean are slice views.
+    """
+    if len(paths) == 0:
+        return {}
+    q32 = np.asarray(query_vec, dtype=np.float32)
+    q64 = np.asarray(query_vec, dtype=np.float64)
+    starts = np.cumsum([0, *counts[:-1]])
+    ends = np.cumsum(counts)
+
+    sims = np.asarray(big @ q32, dtype=np.float64)
+    starts = np.cumsum([0, *counts[:-1]]).tolist()
+    ends = np.cumsum(counts).tolist()
+    scores: dict[str, float] = {}
+    for p, s, e in zip(paths, starts, ends, strict=True):
+        seg = sims[s:e]
+        peak = float(seg.max())
+        mean_sim = 0.0
+        if alpha < 1.0:
+            # track-mean cos == mean of window sims, but the mean-vector norm
+            # still needs the window block itself
+            mean_vec = big[s:e].mean(axis=0).astype(np.float64)
+            mean_norm = float(np.linalg.norm(mean_vec))
+            mean_sim = float(mean_vec @ q64) / mean_norm if mean_norm > 0.0 else 0.0
+        scores[p] = alpha * peak + (1.0 - alpha) * mean_sim
+    return scores
 
 
 def rank_hybrid(
@@ -70,23 +89,17 @@ def rank_hybrid(
         candidates = [_Candidate(hit.rel_path, 1.0 - hit.distance) for hit in knn]
 
     cand_paths = [c.rel_path for c in candidates if c.rel_path not in excluded]
-    windows = store.load_windows(cand_paths)
+    paths, big, counts = store.load_windows_flat(cand_paths)
+    scores = _rescore_flat(paths=paths, big=big, counts=counts, query_vec=query_vec, alpha=alpha)
+    tracks = store.get_tracks(cand_paths)
 
     scored: list[tuple[TrackRow[D], float]] = []
     for cand in candidates:
-        if cand.rel_path in excluded:
-            continue
-        track = store.get_track(cand.rel_path)
+        track = tracks.get(cand.rel_path)
         if track is None:
             continue
-        score = _score_track(
-            rel_path=cand.rel_path,
-            mean_sim=cand.mean_sim,
-            window_vecs=windows.get(cand.rel_path),
-            query_vec=query_vec,
-            alpha=alpha,
-        )
-        scored.append((track, score))
+        # legacy track without stored windows falls back to mean cos
+        scored.append((track, scores.get(cand.rel_path, cand.mean_sim)))
 
     def by_score(entry: tuple[TrackRow[D], float]) -> float:
         return entry[1]

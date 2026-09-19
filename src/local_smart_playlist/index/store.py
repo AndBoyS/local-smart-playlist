@@ -1,10 +1,10 @@
 """SQLite + sqlite-vec track vector store."""
 
 import sqlite3
-from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from itertools import groupby
 from os import PathLike
 from typing import cast
 
@@ -14,6 +14,7 @@ from shape_extensions import IntVar
 
 D = IntVar("D")  # embedding dim (fixed per store instance)
 W = IntVar("W")  # window count per track
+T = IntVar("T")  # total windows across fetched tracks
 
 SCHEMA_VERSION = "2"
 
@@ -225,27 +226,49 @@ class Store:
         )
         self._conn.commit()
 
-    def load_windows(self, rel_paths: Iterable[str]) -> dict[str, np.ndarray[[W, D]]]:
-        """All window vectors grouped by rel_path, in window order."""
-        out: defaultdict[str, list[np.ndarray[[D]]]] = defaultdict(list)
+    def load_windows_flat(
+        self, rel_paths: Iterable[str]
+    ) -> tuple[list[str], np.ndarray[[T, D]], list[int]]:
+        """All windows as one contiguous [total_windows, dim] matrix, row-major.
+
+        Returns (rel_paths in window order, big matrix, per-track window
+        counts); big[starts[i] : starts[i] + counts[i]] is track i's window
+        block. Single flat array avoids a per-track np.stack pass.
+        """
         ids = list(rel_paths)
+        rows: list[tuple[str, bytes]] = []
         chunk_size = 400  # sqlite variable limit headroom
         for start in range(0, len(ids), chunk_size):
             chunk = ids[start : start + chunk_size]
             placeholders = ",".join("?" for _ in chunk)
-            rows = self._conn.execute(
-                f"""
-                SELECT rel_path, window_idx, vec FROM windows
-                WHERE rel_path IN ({placeholders})
-                ORDER BY rel_path, window_idx
-                """,
-                chunk,
-            ).fetchall()
-            for rel, _idx, blob in rows:
-                assert isinstance(rel, str)
-                assert isinstance(blob, bytes)
-                out[rel].append(_deserialize(blob, self._embed_dim))
-        return {rel: np.stack(vecs) for rel, vecs in out.items()}
+            rows.extend(
+                self._conn.execute(
+                    f"""
+                    SELECT rel_path, vec FROM windows
+                    WHERE rel_path IN ({placeholders})
+                    ORDER BY rel_path, window_idx
+                    """,
+                    chunk,
+                ).fetchall()
+            )
+        big = np.empty((len(rows), self._embed_dim), dtype=np.float32)
+        rels: list[str] = []
+        for i, (rel, blob) in enumerate(rows):
+            assert isinstance(rel, str)
+            assert isinstance(blob, bytes)
+            rels.append(rel)
+            big[i] = np.frombuffer(blob, dtype=np.float32)  # pyrefly: ignore[unsupported-operation]
+        paths = [k for k, _ in groupby(rels)]
+        counts = [sum(1 for _ in g) for _, g in groupby(rels)]
+        return paths, big, counts
+
+    def load_windows(self, rel_paths: Iterable[str]) -> dict[str, np.ndarray[[W, D]]]:
+        """All window vectors grouped by rel_path, in window order."""
+        paths, big, counts = self.load_windows_flat(rel_paths)
+        if len(paths) == 0:
+            return {}
+        starts = np.cumsum([0, *counts[:-1]]).tolist()
+        return {p: big[s : s + n] for p, s, n in zip(paths, starts, counts, strict=True)}
 
     def record_failure(self, *, rel_path: str, error: str, now: str) -> None:
         row = self._conn.execute("SELECT attempts FROM failures WHERE rel_path = ?", (rel_path,)).fetchone()
@@ -336,6 +359,33 @@ class Store:
             )
             for r in rows
         ]
+
+    def get_tracks(self, rel_paths: Iterable[str]) -> dict[str, TrackRow[D]]:
+        """Full track records for many rel_paths, one query per chunk."""
+        ids = list(rel_paths)
+        out: dict[str, TrackRow[D]] = {}
+        chunk_size = 400  # sqlite variable limit headroom
+        for start in range(0, len(ids), chunk_size):
+            chunk = ids[start : start + chunk_size]
+            placeholders = ",".join("?" for _ in chunk)
+            rows = self._conn.execute(
+                f"""
+                SELECT rel_path, mean_vec, p90_vec, n_windows, duration, title, model
+                FROM tracks WHERE rel_path IN ({placeholders})
+                """,
+                chunk,
+            ).fetchall()
+            for row in rows:
+                out[cast("str", row[0])] = TrackRow(
+                    rel_path=cast("str", row[0]),
+                    mean_vec=_deserialize(cast("bytes", row[1]), self._embed_dim),
+                    p90_vec=_deserialize(cast("bytes", row[2]), self._embed_dim),
+                    n_windows=cast("int", row[3]),
+                    duration=cast("float", row[4]),
+                    title=cast("str", row[5]),
+                    model=cast("str", row[6]),
+                )
+        return out
 
     def get_track(self, rel_path: str) -> TrackRow[D] | None:
         row = self._conn.execute(

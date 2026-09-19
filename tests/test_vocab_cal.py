@@ -37,9 +37,12 @@ def fake_embedder(texts: list[str]) -> np.ndarray:
     return out
 
 
-def _torch_model(texts: list[str]) -> "torch.Tensor":
+def _torch_model(
+    *, texts: "list[str] | None" = None, wavs: "torch.Tensor | None" = None
+) -> "torch.Tensor":
     import torch
 
+    assert texts is not None
     return torch.from_numpy(fake_embedder(texts))
 
 
@@ -47,9 +50,12 @@ def _embedder_for(mapping: dict[str, int]) -> MuLanEmbedder[32]:
     """MuLanEmbedder wrapping the hashed-basis model: text -> basis[mapping[text]]."""
 
     class _Model:
-        def __call__(self, texts: list[str]) -> "torch.Tensor":
+        def __call__(
+            self, *, texts: "list[str] | None" = None, wavs: "torch.Tensor | None" = None
+        ) -> "torch.Tensor":
             import torch
 
+            assert texts is not None
             return torch.from_numpy(np.stack([basis(mapping[t]) for t in texts]))
 
     return MuLanEmbedder(_Model(), dim=DIM)

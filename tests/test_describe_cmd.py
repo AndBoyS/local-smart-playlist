@@ -26,8 +26,11 @@ def basis(i: int) -> np.ndarray:
 class _FakeTextModel:
     """MuQMuLan stand-in: 'caption A' -> e0, 'caption B' -> e1, 'caption C' -> e2, other -> hashed basis."""
 
-    def __call__(self, texts: list[str]) -> "torch.Tensor":
+    def __call__(
+        self, *, texts: "list[str] | None" = None, wavs: "torch.Tensor | None" = None
+    ) -> "torch.Tensor":
         """Deterministic basis vectors."""
+        assert texts is not None
         out = np.empty((len(texts), DIM), dtype=np.float32)
         for i, text in enumerate(texts):
             if text == "caption A":

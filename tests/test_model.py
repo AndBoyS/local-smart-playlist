@@ -14,7 +14,6 @@ def test_model_load() -> None:
     from local_smart_playlist.embed.model import EMBED_DIM, load_model
 
     embedder = load_model()
-    _ = embedder.model.eval()
     assert embedder.dim == EMBED_DIM
 
 

@@ -171,3 +171,104 @@ def test_track_meta_without_vectors(store: Store) -> None:
     for m in metas:
         assert m.duration == pytest.approx(60.0)
         assert m.title == m.rel_path
+
+
+def test_migrate_v2_windows_to_blocks(tmp_path: Path) -> None:
+    """v2 row-per-window DB upgrades in place to v3 window_blocks."""
+    import sqlite3
+
+    path = tmp_path / "v2.db"
+    conn = sqlite3.connect(path)
+    _ = conn.executescript(
+        """
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE tracks (
+            rel_path TEXT PRIMARY KEY,
+            mean_vec BLOB NOT NULL,
+            p90_vec BLOB NOT NULL,
+            n_windows INTEGER NOT NULL,
+            duration REAL NOT NULL,
+            title TEXT NOT NULL,
+            model TEXT NOT NULL,
+            indexed_at TEXT NOT NULL
+        );
+        CREATE TABLE windows (
+            rel_path TEXT NOT NULL REFERENCES tracks(rel_path) ON DELETE CASCADE,
+            window_idx INTEGER NOT NULL,
+            vec BLOB NOT NULL,
+            PRIMARY KEY (rel_path, window_idx)
+        );
+        """
+    )
+    vec = basis_vec(2)
+    _ = conn.execute("INSERT INTO meta VALUES ('schema_version', '2')")
+    _ = conn.execute(
+        "INSERT INTO tracks VALUES ('a.mp3', ?, ?, 2, 60.0, 'a', 'test', 'now')",
+        (np.ascontiguousarray(vec, dtype=np.float32).tobytes(),) * 2,
+    )
+    _ = conn.executemany(
+        "INSERT INTO windows VALUES (?, ?, ?)",
+        [
+            ("a.mp3", 0, np.ascontiguousarray(basis_vec(0), dtype=np.float32).tobytes()),
+            ("a.mp3", 1, np.ascontiguousarray(basis_vec(1), dtype=np.float32).tobytes()),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    store = Store(path, embed_dim=DIM)  # triggers migration
+    assert store.get_meta("schema_version") == "3"
+    assert store.window_count() == 2
+    loaded = store.load_windows(["a.mp3"])
+    assert np.allclose(loaded["a.mp3"], np.stack([basis_vec(0), basis_vec(1)]))
+
+    # add_windows still roundtrips after migration
+    store.add_windows(rel_path="a.mp3", window_vecs=np.stack([basis_vec(4)]))
+    assert store.window_count() == 1
+    # pyrefly: ignore[unknown-argument-type]
+    assert np.allclose(store.load_windows(["a.mp3"])["a.mp3"], basis_vec(4).reshape(1, DIM))
+
+
+def test_load_windows_flat_layout(tmp_path: Path) -> None:
+    store = Store(tmp_path / "flat.db", embed_dim=DIM)
+    for rel, i in (("b.mp3", 1), ("a.mp3", 0)):
+        vec = basis_vec(i)
+        store.upsert(
+            rel_path=rel,
+            mean_vec=vec,
+            p90_vec=vec,
+            n_windows=2,
+            duration=60.0,
+            title=rel,
+            model="test",
+            indexed_at="now",
+        )
+        store.add_windows(rel_path=rel, window_vecs=np.stack([basis_vec(i), basis_vec(i + 3)]))
+
+    paths, big, counts = store.load_windows_flat(["a.mp3", "b.mp3", "missing.mp3"])
+    assert paths == ["a.mp3", "b.mp3"]
+    assert counts == [2, 2]
+    assert big.shape == (4, DIM)
+    assert np.allclose(big[:2], np.stack([basis_vec(0), basis_vec(3)]))
+    assert np.allclose(big[2:], np.stack([basis_vec(1), basis_vec(4)]))
+
+    # empty candidate set
+    empty = store.load_windows_flat([])
+    assert empty[0] == []
+    assert empty[1].shape == (0, DIM)
+    assert empty[2] == []
+    # legacy track without windows
+    store.upsert(
+        rel_path="legacy.mp3",
+        mean_vec=vec,
+        p90_vec=vec,
+        n_windows=0,
+        duration=60.0,
+        title="legacy",
+        model="test",
+        indexed_at="now",
+    )
+    legacy = store.load_windows_flat(["legacy.mp3"])
+    assert legacy[0] == []
+    assert legacy[1].shape == (0, DIM)
+    assert legacy[2] == []

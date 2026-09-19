@@ -4,7 +4,6 @@ import sqlite3
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from itertools import groupby
 from os import PathLike
 from typing import cast
 
@@ -16,7 +15,7 @@ D = IntVar("D")  # embedding dim (fixed per store instance)
 W = IntVar("W")  # window count per track
 T = IntVar("T")  # total windows across fetched tracks
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -33,11 +32,9 @@ CREATE TABLE IF NOT EXISTS tracks (
     model TEXT NOT NULL,
     indexed_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS windows (
-    rel_path TEXT NOT NULL REFERENCES tracks(rel_path) ON DELETE CASCADE,
-    window_idx INTEGER NOT NULL,
-    vec BLOB NOT NULL,
-    PRIMARY KEY (rel_path, window_idx)
+CREATE TABLE IF NOT EXISTS window_blocks (
+    rel_path TEXT PRIMARY KEY REFERENCES tracks(rel_path) ON DELETE CASCADE,
+    vec BLOB NOT NULL  -- concatenated float32 windows, window order
 );
 CREATE TABLE IF NOT EXISTS failures (
     rel_path TEXT PRIMARY KEY,
@@ -50,6 +47,11 @@ CREATE TABLE IF NOT EXISTS failures (
 
 def now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def _windows_blob(window_vecs: np.ndarray[[W, D]]) -> bytes:
+    """Concatenated float32 window block, window order (v3 blob format)."""
+    return np.ascontiguousarray(window_vecs, dtype=np.float32).tobytes()
 
 
 def _serialize(vec: np.ndarray[[D]]) -> bytes:
@@ -120,9 +122,39 @@ class Store:
         row = self._conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
         if row is None:
             self.set_meta("schema_version", SCHEMA_VERSION)
+        elif row[0] == "2":
+            self._migrate_v2_windows()
         elif row[0] != SCHEMA_VERSION:
             msg = f"index schema v{row[0]} does not match v{SCHEMA_VERSION}; delete the index or pin a release"
             raise RuntimeError(msg)
+        self._ensure_vec_table()
+
+    def _migrate_v2_windows(self) -> None:
+        """v2 windows table (row per window) -> v3 window_blocks (blob per track)."""
+        rows = self._conn.execute(
+            "SELECT rel_path, vec FROM windows ORDER BY rel_path, window_idx"
+        ).fetchall()
+        blocks: list[tuple[str, bytes]] = []
+        current_rel: str | None = None
+        parts: list[bytes] = []
+        for item in rows:
+            rel = cast("str", item[0])
+            blob = cast("bytes", item[1])
+            if rel != current_rel:
+                if current_rel is not None:
+                    blocks.append((current_rel, b"".join(parts)))
+                current_rel = rel
+                parts = []
+            parts.append(blob)
+        if current_rel is not None:
+            blocks.append((current_rel, b"".join(parts)))
+        del rows, parts
+        _ = self._conn.executemany(
+            "INSERT OR REPLACE INTO window_blocks(rel_path, vec) VALUES (?, ?)", blocks
+        )
+        _ = self._conn.execute("DROP TABLE windows")
+        self._conn.commit()
+        self.set_meta("schema_version", SCHEMA_VERSION)
         self._ensure_vec_table()
 
     def _ensure_vec_table(self) -> None:
@@ -213,16 +245,16 @@ class Store:
             "INSERT INTO tracks_vec(rel_path, mean_vec) VALUES (?, ?)",
             (rel_path, _serialize(mean_vec)),
         )
-        _ = self._conn.execute("DELETE FROM windows WHERE rel_path = ?", (rel_path,))
+        _ = self._conn.execute("DELETE FROM window_blocks WHERE rel_path = ?", (rel_path,))
         _ = self._conn.execute("DELETE FROM failures WHERE rel_path = ?", (rel_path,))
         self._conn.commit()
 
     def add_windows(self, *, rel_path: str, window_vecs: np.ndarray[[W, D]]) -> None:
         """Replace this track's window vectors with the given (n, dim) array."""
-        _ = self._conn.execute("DELETE FROM windows WHERE rel_path = ?", (rel_path,))
-        _ = self._conn.executemany(
-            "INSERT OR REPLACE INTO windows(rel_path, window_idx, vec) VALUES (?, ?, ?)",
-            [(rel_path, i, _serialize(vec)) for i, vec in enumerate(window_vecs)],
+        _ = self._conn.execute("DELETE FROM window_blocks WHERE rel_path = ?", (rel_path,))
+        _ = self._conn.execute(
+            "INSERT OR REPLACE INTO window_blocks(rel_path, vec) VALUES (?, ?)",
+            (rel_path, _windows_blob(window_vecs)),
         )
         self._conn.commit()
 
@@ -231,9 +263,10 @@ class Store:
     ) -> tuple[list[str], np.ndarray[[T, D]], list[int]]:
         """All windows as one contiguous [total_windows, dim] matrix, row-major.
 
-        Returns (rel_paths in window order, big matrix, per-track window
-        counts); big[starts[i] : starts[i] + counts[i]] is track i's window
-        block. Single flat array avoids a per-track np.stack pass.
+        Returns (rel_paths, big matrix, per-track window counts);
+        big[starts[i] : starts[i] + counts[i]] is track i's window block.
+        Each track stores one concatenated BLOB, so this is one row fetch per
+        track plus a single copy into the flat matrix.
         """
         ids = list(rel_paths)
         rows: list[tuple[str, bytes]] = []
@@ -244,22 +277,35 @@ class Store:
             rows.extend(
                 self._conn.execute(
                     f"""
-                    SELECT rel_path, vec FROM windows
+                    SELECT rel_path, vec FROM window_blocks
                     WHERE rel_path IN ({placeholders})
-                    ORDER BY rel_path, window_idx
+                    ORDER BY rel_path
                     """,
                     chunk,
                 ).fetchall()
             )
-        big = np.empty((len(rows), self._embed_dim), dtype=np.float32)
-        rels: list[str] = []
-        for i, (rel, blob) in enumerate(rows):
-            assert isinstance(rel, str)
-            assert isinstance(blob, bytes)
-            rels.append(rel)
-            big[i] = np.frombuffer(blob, dtype=np.float32)  # pyrefly: ignore[unsupported-operation]
-        paths = [k for k, _ in groupby(rels)]
-        counts = [sum(1 for _ in g) for _, g in groupby(rels)]
+        stride = 4 * self._embed_dim
+        paths: list[str] = []
+        counts: list[int] = []
+        blocks: list[np.ndarray] = []
+        for item in rows:
+            rel = item[0]
+            blob = item[1]
+            n = len(blob) // stride
+            assert len(blob) == n * stride, f"corrupt window block for {rel}"
+            if n == 0:
+                continue  # empty block: no windows stored
+            paths.append(rel)
+            counts.append(n)
+            blocks.append(
+                np.frombuffer(blob, dtype=np.float32).reshape(n, self._embed_dim)  # pyrefly: ignore[unknown-argument-type]
+            )
+        if len(blocks) == 0:
+            return [], cast("np.ndarray[[T, D]]", np.empty((0, self._embed_dim), dtype=np.float32)), []
+        big = cast(
+            "np.ndarray[[T, D]]",
+            np.concatenate(blocks),
+        )
         return paths, big, counts
 
     def load_windows(self, rel_paths: Iterable[str]) -> dict[str, np.ndarray[[W, D]]]:
@@ -288,7 +334,7 @@ class Store:
         stale = [cast("str", r[0]) for r in tracks if cast("str", r[0]) not in valid]
         failures = self._conn.execute("SELECT rel_path FROM failures").fetchall()
         fstale = [cast("str", r[0]) for r in failures if cast("str", r[0]) not in valid]
-        _ = self._conn.executemany("DELETE FROM windows WHERE rel_path = ?", [(p,) for p in stale])
+        _ = self._conn.executemany("DELETE FROM window_blocks WHERE rel_path = ?", [(p,) for p in stale])
         _ = self._conn.executemany("DELETE FROM tracks WHERE rel_path = ?", [(p,) for p in stale])
         _ = self._conn.executemany("DELETE FROM tracks_vec WHERE rel_path = ?", [(p,) for p in stale])
         _ = self._conn.executemany("DELETE FROM failures WHERE rel_path = ?", [(p,) for p in fstale])
@@ -306,8 +352,8 @@ class Store:
         return cast("int", row[0])
 
     def window_count(self) -> int:
-        row = self._conn.execute("SELECT COUNT(*) FROM windows").fetchone()
-        return cast("int", row[0])
+        row = self._conn.execute("SELECT COALESCE(SUM(length(vec)), 0) FROM window_blocks").fetchone()
+        return cast("int", row[0]) // (4 * self._embed_dim)
 
     def list_failures(self, limit: int = 20) -> list[tuple[str, str, int]]:
         rows = self._conn.execute(

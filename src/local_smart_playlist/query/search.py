@@ -1,7 +1,6 @@
 """Query embedding and ranking against the track store."""
 
 from dataclasses import dataclass
-from typing import cast
 
 import numpy as np
 from shape_extensions import IntVar
@@ -80,10 +79,16 @@ def rank_hybrid(
     if want > KNN_LIMIT:
         # Full-library ranking: plain scan over mean vectors (numpy matmul),
         # avoiding the sqlite-vec KNN row cap.
-        rows = store.all_track_means()
-        sims = (np.stack([v for _, v in rows]).astype(np.float64) @ np.asarray(query_vec, dtype=np.float64)).ravel()
+        track_to_mean = store.all_track_means()
+        sims = (
+            np.stack(list(track_to_mean.values())).astype(np.float64) @ np.asarray(query_vec, dtype=np.float64)
+        ).ravel()
         order = np.argsort(-sims)[:want]
-        candidates = [_Candidate(rel_path=cast("str", rows[i.item()][0]), mean_sim=float(sims[i])) for i in order]
+        candidates = []
+        paths = list(track_to_mean)
+        for i in order:
+            rel_path = paths[int(i.item())]
+            candidates.append(_Candidate(rel_path=rel_path, mean_sim=float(sims[i])))
     else:
         knn = store.knn(query_vec=query_vec, k=want)
         candidates = [_Candidate(hit.rel_path, 1.0 - hit.distance) for hit in knn]

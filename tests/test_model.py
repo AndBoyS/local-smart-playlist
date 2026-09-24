@@ -1,7 +1,5 @@
 """Real MuQ-MuLan model sanity tests (marked `model`; run with `uv run pytest -m model`)."""
 
-from typing import Any, cast
-
 import numpy as np
 import pytest
 
@@ -25,7 +23,7 @@ def test_text_embedding() -> None:
     assert vecs.shape == (2, EMBED_DIM)
     assert np.allclose(np.linalg.norm(vecs, axis=1), 1.0, atol=1e-5)
     # Different moods should not collapse to the same vector.
-    dot = float(cast("Any", vecs[0] @ vecs[1]))
+    dot = float(vecs[0] @ vecs[1])
     assert dot < 0.9
 
 

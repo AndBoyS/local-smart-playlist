@@ -27,14 +27,13 @@ re-embedded per run (215 captions, a few seconds), no re-index needed.
 import base64
 import hashlib
 from dataclasses import dataclass
-from typing import cast
 
 import numpy as np
 from shape_extensions import IntVar
 
 from local_smart_playlist.embed.model import MODEL_ID, MuLanEmbedder
 from local_smart_playlist.index.store import Store, TrackMeta
-from local_smart_playlist.numpy_helpers import gt, l2_normalize
+from local_smart_playlist.numpy_helpers import l2_normalize, reshape
 
 W = IntVar("W")  # window count
 D = IntVar("D")  # embedding dim
@@ -80,8 +79,7 @@ def _decode_bank(*, blob: str, dim: int, n: int) -> np.ndarray[[V, D]] | None:
         return None
     if arr.size != n * dim:
         return None
-    # reshape of an unshaped-frombuffer array is a stub gap; copy() first for ownership.
-    return cast("np.ndarray[[V, D]]", arr.copy().reshape(n, dim))
+    return reshape(arr, (n, dim))
 
 
 def vocab_vector_bank_cached(store: Store, model: MuLanEmbedder[D], *, vocab: list[str]) -> np.ndarray[[V, D]]:
@@ -133,13 +131,12 @@ def vocab_calibration_score(
         margins: np.ndarray[[W, 1]] = sims_q[:, None] - sims_m[:, None]
         z = margins.mean() / MARGIN_TAU
         score = float(1.0 / (1.0 + np.exp(-z)))
-        coverage = float(gt(margins, 0.0).mean())
+        coverage = float(np.greater(margins, 0.0).mean())
     else:
-        # pyrefly: ignore [bad-assignment, unsupported-operation]
-        beaten: np.ndarray[[W, V]] = sims_q[:, None] > sims_v
+        beaten = np.greater(sims_q[:, None], sims_v)
         percentiles: np.ndarray[[W, 1]] = beaten.mean(axis=1)[:, None]
         score = float(percentiles.mean())
-        coverage = float(gt(percentiles, NEUTRAL).mean())
+        coverage = float(np.greater(percentiles, NEUTRAL).mean())
     return VocabCalScore(score=score, coverage=coverage)
 
 

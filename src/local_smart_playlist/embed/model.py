@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Protocol, cast, overload
+from typing import Any, Protocol, overload
 
 import numpy as np
 import soxr
@@ -188,16 +188,16 @@ def _load_muq_safetensors_text_only(snapshot: Path) -> nn.Module:
 
     config = json.loads((snapshot / "config.json").read_text(encoding="utf-8"))
     text_transformer = TextTransformerPretrained(
-        model_name=cast("str", config["text_model"]["name"]),
-        model_dim=cast("int | None", config["text_model"]["model_dim"]),
-        **cast("dict[str, Any]", config["text_transformer"]),
+        model_name=config["text_model"]["name"],  # pyrefly: ignore[unknown-argument-type]
+        model_dim=config["text_model"]["model_dim"],  # pyrefly: ignore[unknown-argument-type]
+        **config["text_transformer"],  # pyrefly: ignore[unknown-argument-type]
         frozen_pretrained=False,
     )
-    audio_stub = SimpleNamespace(dim=cast("int", config["audio_transformer"]["dim"]), depth=0)
+    audio_stub: Any = SimpleNamespace(dim=config["audio_transformer"]["dim"], depth=0)  # pyrefly: ignore[unknown-argument-type]
     mulan = MuLanModel(
-        audio_transformer=cast("Any", audio_stub),
-        text_transformer=cast("Any", text_transformer),
-        **cast("dict[str, Any]", config["mulan"]),
+        audio_transformer=audio_stub,
+        text_transformer=text_transformer,
+        **config["mulan"],  # pyrefly: ignore[unknown-argument-type]
     )
     model = MuQMuLan.__new__(MuQMuLan)
     nn.Module.__init__(model)

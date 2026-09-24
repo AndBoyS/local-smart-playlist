@@ -1,15 +1,17 @@
 """SQLite + sqlite-vec track vector store."""
 
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from os import PathLike
-from typing import cast
 
 import numpy as np
 import sqlite_vec
 from shape_extensions import IntVar
+
+from local_smart_playlist.numpy_helpers import reshape
+from local_smart_playlist.type_utils import verify_type
 
 D = IntVar("D")  # embedding dim (fixed per store instance)
 W = IntVar("W")  # window count per track
@@ -131,15 +133,13 @@ class Store:
 
     def _migrate_v2_windows(self) -> None:
         """v2 windows table (row per window) -> v3 window_blocks (blob per track)."""
-        rows = self._conn.execute(
-            "SELECT rel_path, vec FROM windows ORDER BY rel_path, window_idx"
-        ).fetchall()
+        rows = self._conn.execute("SELECT rel_path, vec FROM windows ORDER BY rel_path, window_idx").fetchall()
         blocks: list[tuple[str, bytes]] = []
         current_rel: str | None = None
         parts: list[bytes] = []
-        for item in rows:
-            rel = cast("str", item[0])
-            blob = cast("bytes", item[1])
+        for rel, blob in rows:
+            assert isinstance(rel, str)
+            assert isinstance(blob, bytes)
             if rel != current_rel:
                 if current_rel is not None:
                     blocks.append((current_rel, b"".join(parts)))
@@ -149,9 +149,7 @@ class Store:
         if current_rel is not None:
             blocks.append((current_rel, b"".join(parts)))
         del rows, parts
-        _ = self._conn.executemany(
-            "INSERT OR REPLACE INTO window_blocks(rel_path, vec) VALUES (?, ?)", blocks
-        )
+        _ = self._conn.executemany("INSERT OR REPLACE INTO window_blocks(rel_path, vec) VALUES (?, ?)", blocks)
         _ = self._conn.execute("DROP TABLE windows")
         self._conn.commit()
         self.set_meta("schema_version", SCHEMA_VERSION)
@@ -204,7 +202,8 @@ class Store:
         row = self._conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
         if row is None:
             return None
-        return cast("str", row[0])
+        assert isinstance(row[0], str)
+        return row[0]
 
     # -- indexing ----------------------------------------------------------
 
@@ -258,9 +257,7 @@ class Store:
         )
         self._conn.commit()
 
-    def load_windows_flat(
-        self, rel_paths: Iterable[str]
-    ) -> tuple[list[str], np.ndarray[[T, D]], list[int]]:
+    def load_windows_flat(self, rel_paths: Iterable[str]) -> tuple[list[str], np.ndarray[[T, D]], list[int]]:
         """All windows as one contiguous [total_windows, dim] matrix, row-major.
 
         Returns (rel_paths, big matrix, per-track window counts);
@@ -287,7 +284,7 @@ class Store:
         stride = 4 * self._embed_dim
         paths: list[str] = []
         counts: list[int] = []
-        blocks: list[np.ndarray] = []
+        blocks: list[np.ndarray[[T, D]]] = []
         for item in rows:
             rel = item[0]
             blob = item[1]
@@ -297,15 +294,10 @@ class Store:
                 continue  # empty block: no windows stored
             paths.append(rel)
             counts.append(n)
-            blocks.append(
-                np.frombuffer(blob, dtype=np.float32).reshape(n, self._embed_dim)  # pyrefly: ignore[unknown-argument-type]
-            )
+            blocks.append(reshape(np.frombuffer(blob, dtype=np.float32), (n, self._embed_dim)))
         if len(blocks) == 0:
-            return [], cast("np.ndarray[[T, D]]", np.empty((0, self._embed_dim), dtype=np.float32)), []
-        big = cast(
-            "np.ndarray[[T, D]]",
-            np.concatenate(blocks),
-        )
+            return [], np.empty((len(blocks), self._embed_dim), dtype=np.float32), []
+        big = np.concatenate(blocks)
         return paths, big, counts
 
     def load_windows(self, rel_paths: Iterable[str]) -> dict[str, np.ndarray[[W, D]]]:
@@ -318,7 +310,8 @@ class Store:
 
     def record_failure(self, *, rel_path: str, error: str, now: str) -> None:
         row = self._conn.execute("SELECT attempts FROM failures WHERE rel_path = ?", (rel_path,)).fetchone()
-        attempts = (cast("int", row[0]) + 1) if row is not None else 1
+        attempts = (row[0] + 1) if row is not None else 1
+        assert isinstance(attempts, int)
         _ = self._conn.execute(
             """
             INSERT OR REPLACE INTO failures(rel_path, error, attempts, last_at) VALUES (?, ?, ?, ?)
@@ -330,10 +323,10 @@ class Store:
     def prune_missing(self, valid_rel_paths: Iterable[str]) -> int:
         """Drop tracks/failures no longer on disk; returns number removed."""
         valid = set(valid_rel_paths)
-        tracks = self._conn.execute("SELECT rel_path FROM tracks").fetchall()
-        stale = [cast("str", r[0]) for r in tracks if cast("str", r[0]) not in valid]
-        failures = self._conn.execute("SELECT rel_path FROM failures").fetchall()
-        fstale = [cast("str", r[0]) for r in failures if cast("str", r[0]) not in valid]
+        tracks: list[Sequence[str]] = self._conn.execute("SELECT rel_path FROM tracks").fetchall()
+        stale = [r[0] for r in tracks if r[0] not in valid]
+        failures: list[Sequence[str]] = self._conn.execute("SELECT rel_path FROM failures").fetchall()
+        fstale = [r[0] for r in failures if (r[0]) not in valid]
         _ = self._conn.executemany("DELETE FROM window_blocks WHERE rel_path = ?", [(p,) for p in stale])
         _ = self._conn.executemany("DELETE FROM tracks WHERE rel_path = ?", [(p,) for p in stale])
         _ = self._conn.executemany("DELETE FROM tracks_vec WHERE rel_path = ?", [(p,) for p in stale])
@@ -345,33 +338,46 @@ class Store:
 
     def track_count(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) FROM tracks").fetchone()
-        return cast("int", row[0])
+        assert row is not None
+        assert isinstance(row[0], int)
+        return row[0]
 
     def failure_count(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) FROM failures").fetchone()
-        return cast("int", row[0])
+        assert row is not None
+        assert isinstance(row[0], int)
+        return row[0]
 
     def window_count(self) -> int:
         row = self._conn.execute("SELECT COALESCE(SUM(length(vec)), 0) FROM window_blocks").fetchone()
-        return cast("int", row[0]) // (4 * self._embed_dim)
+        assert row is not None
+        assert isinstance(row[0], int)
+        return row[0] // (4 * self._embed_dim)
 
     def list_failures(self, limit: int = 20) -> list[tuple[str, str, int]]:
         rows = self._conn.execute(
             "SELECT rel_path, error, attempts FROM failures ORDER BY rel_path LIMIT ?", (limit,)
         ).fetchall()
-        return [(cast("str", r[0]), cast("str", r[1]), cast("int", r[2])) for r in rows]
+        return [
+            (verify_type(rel_path, str), verify_type(error, str), verify_type(attempts, int))
+            for rel_path, error, attempts in rows
+        ]
 
     # -- search ------------------------------------------------------------
 
-    def all_track_means(self) -> list[tuple[str, np.ndarray[[D]]]]:
-        """Every (rel_path, mean_vec) — full scan for over-KNN-limit ranking."""
+    def all_track_means(self) -> dict[str, np.ndarray[[D]]]:
+        """Every rel_path mapped to mean_vec — full scan for over-KNN-limit ranking."""
         rows = self._conn.execute("SELECT rel_path, mean_vec FROM tracks").fetchall()
-        return [(cast("str", r[0]), _deserialize(cast("bytes", r[1]), self._embed_dim)) for r in rows]
+
+        return {
+            verify_type(rel_path, str): _deserialize(verify_type(blob, bytes), self._embed_dim)
+            for rel_path, blob in rows
+        }
 
     def track_rel_paths(self) -> set[str]:
         """Every indexed rel_path."""
         rows = self._conn.execute("SELECT rel_path FROM tracks").fetchall()
-        return {cast("str", r[0]) for r in rows}
+        return {verify_type(rel_path, str) for (rel_path,) in (rows)}
 
     def knn(self, *, query_vec: np.ndarray[[D]], k: int) -> list[KnnHit]:
         """Nearest tracks by cosine distance on the mean vector."""
@@ -387,11 +393,11 @@ class Store:
         ).fetchall()
         return [
             KnnHit(
-                rel_path=cast("str", r[0]),
-                title=cast("str", r[1]),
-                distance=cast("float", r[2]),
+                rel_path=verify_type(rel_path, str),
+                title=verify_type(title, str),
+                distance=verify_type(distance, float),
             )
-            for r in rows
+            for rel_path, title, distance in rows
         ]
 
     def track_meta(self) -> list[TrackMeta]:
@@ -399,11 +405,11 @@ class Store:
         rows = self._conn.execute("SELECT rel_path, title, duration FROM tracks").fetchall()
         return [
             TrackMeta(
-                rel_path=cast("str", r[0]),
-                title=cast("str", r[1]),
-                duration=cast("float", r[2]),
+                rel_path=verify_type(rel_path, str),
+                title=verify_type(title, str),
+                duration=verify_type(duration, float),
             )
-            for r in rows
+            for rel_path, title, duration in rows
         ]
 
     def get_tracks(self, rel_paths: Iterable[str]) -> dict[str, TrackRow[D]]:
@@ -421,15 +427,15 @@ class Store:
                 """,
                 chunk,
             ).fetchall()
-            for row in rows:
-                out[cast("str", row[0])] = TrackRow(
-                    rel_path=cast("str", row[0]),
-                    mean_vec=_deserialize(cast("bytes", row[1]), self._embed_dim),
-                    p90_vec=_deserialize(cast("bytes", row[2]), self._embed_dim),
-                    n_windows=cast("int", row[3]),
-                    duration=cast("float", row[4]),
-                    title=cast("str", row[5]),
-                    model=cast("str", row[6]),
+            for rel_path, mean_blob, p90_blob, n_windows, duration, title, model in rows:
+                out[rel_path] = TrackRow(
+                    rel_path=verify_type(rel_path, str),
+                    mean_vec=_deserialize(verify_type(mean_blob, bytes), self._embed_dim),
+                    p90_vec=_deserialize(verify_type(p90_blob, bytes), self._embed_dim),
+                    n_windows=verify_type(n_windows, int),
+                    duration=verify_type(duration, float),
+                    title=verify_type(title, str),
+                    model=verify_type(model, str),
                 )
         return out
 
@@ -440,12 +446,13 @@ class Store:
         ).fetchone()
         if row is None:
             return None
+        rel_path, mean_blob, p90_blob, n_windows, duration, title, model = row
         return TrackRow(
-            rel_path=cast("str", row[0]),
-            mean_vec=_deserialize(cast("bytes", row[1]), self._embed_dim),
-            p90_vec=_deserialize(cast("bytes", row[2]), self._embed_dim),
-            n_windows=cast("int", row[3]),
-            duration=cast("float", row[4]),
-            title=cast("str", row[5]),
-            model=cast("str", row[6]),
+            rel_path=verify_type(rel_path, str),
+            mean_vec=_deserialize(verify_type(mean_blob, bytes), self._embed_dim),
+            p90_vec=_deserialize(verify_type(p90_blob, bytes), self._embed_dim),
+            n_windows=verify_type(n_windows, int),
+            duration=verify_type(duration, float),
+            title=verify_type(title, str),
+            model=verify_type(model, str),
         )

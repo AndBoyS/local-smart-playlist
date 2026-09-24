@@ -41,11 +41,26 @@ Guidelines for coding agents working in this repo.
   parameterize them (`TrackRow[D]` — bare `TrackRow` is `implicit-any-type-`
   `argument` under strict). Explicit PEP 695 params (`[N: IntVar, D: IntVar]`)
   always work, in defs and classes alike.
+- No `typing.cast`. Two replacement patterns:
+  - sqlite3/JSON `Any` values: inline `assert isinstance(x, T)` or verify_type if nested
+  - numpy shapes: `_ = shape_extensions.assert_shape(x.shape, (S[V], S[D]))` . Import the wrapper
+    as `from shape_extensions import D as S` to avoid clashing with the
+    module-level `D = IntVar("D")`; dims inside the shape claim are wrapped
+    `S[V]`, symbolic products allowed (`S[V * D]`).
+  - Unshaped arrays from `np.concatenate` / `np.frombuffer`: one
+    `assert_shape` call narrows the variable; no wrapper helpers. For
+    reshape use `numpy_helpers.reshape` (generic over `IntTuple`, result
+    shape pinned by local annotation inside — mirrors `torch_to_numpy`):
+    `two_d = reshape(arr, (n, dim))`.
+  - For returning empty((0, dim)) - Literal `0` in `np.empty((0, dim))` stays `Literal[0]` and never unifies
+    - can use len(arr) instead of 0 if arr is variable that was the reason behind the 0-len, or create empty_rows: int = 0
+  - Comparison dunders (`>`/`>=`/`==`) on shape-typed arrays → stub types them
+    `bool`; use the function forms instead — `np.greater`, `np.greater_equal`,
+    `np.equal` — which preserve shape types (no wrapper helper needed).
   Every pyrefly suppression must name its error code — `# pyrefly: ignore[<code>]`.
   Known stub gaps, with the code to use at each site:
   - `# pyrefly: ignore[unsupported-operation]`: `__setitem__` on shape-typed
-    arrays (facebook/pyrefly#4901), ndarray comparison dunders, reshape without
-    reshape/astype.
+    arrays (facebook/pyrefly#4901), ndarray comparison dunders.
   - `# pyrefly: ignore[unknown-argument-type]`: `np.where` fed `np.linalg.norm`
     output, `np.log`/`np.exp`/`sf.write` over unknown-typed args. NOT a reason
     to wrap things in `np.asarray` — see dtype rule above.

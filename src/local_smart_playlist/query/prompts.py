@@ -8,7 +8,6 @@ import logging
 import os
 import time
 from importlib import resources
-from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -85,15 +84,15 @@ def adapt_mood(mood: str) -> str:
         started = time.perf_counter()
         resp = httpx.post(f"{base_url.rstrip('/')}/chat/completions", json=body, headers=headers, timeout=60.0)
         _ = resp.raise_for_status()
-        payload = cast("Any", resp.json())
+        payload = resp.json()
         content = payload["choices"][0]["message"]["content"]
+        assert isinstance(content, str)
     except Exception as exc:  # noqa: BLE001 — surface any endpoint failure as LlmError
         logger.warning("llm adapt failed for %r via %s/%s: %s", mood, base_url, model, exc)
         msg = f"LLM adaptation failed: {exc}"
         raise LlmError(msg) from exc
 
-    text = cast("str", content)
-    lines = [line.strip().lstrip("-*• ").strip() for line in text.splitlines()]
+    lines = [line.strip().lstrip("-*• ").strip() for line in content.splitlines()]
     lines = [line for line in lines if line != ""]
     if len(lines) == 0:
         logger.warning("llm adapt returned no text for %r via %s/%s", mood, base_url, model)

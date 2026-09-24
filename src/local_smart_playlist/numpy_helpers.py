@@ -1,27 +1,20 @@
-"""Shared numpy helpers; pyrefly shape-stub ignores are centralized here.
+"""Shared numpy helpers.
 
 Pure numpy — no torch/transformers imports, so everything downstream can use
 these without pulling in the model.
 """
 
 import numpy as np
-from shape_extensions import IntVar
+from shape_extensions import IntTuple, IntVar
 
 N = IntVar("N")  # generic row count
 D = IntVar("D")  # generic column count
 
 
-def gt(
-    values: np.ndarray[[N, D]],
-    other: float | np.ndarray[[N, D]] | np.ndarray[[N, 1]],
-) -> np.ndarray[[N, D]]:
-    """Elementwise strict ``>`` with broadcasting (values vs scalar or per-row).
-
-    Needed until pyrefly shape typing is fixed
-    """
-    # pyrefly: ignore [bad-assignment, unsupported-operation]
-    mask: np.ndarray[[N, D]] = values > other
-    return mask
+def reshape[Shape: IntTuple](a: np.ndarray, shape: Shape) -> np.ndarray[Shape]:
+    """Reshape with the result shape tracked in the type system. Temporary until pyrefly implements"""
+    out: np.ndarray[Shape] = a.reshape(shape)
+    return out
 
 
 def l2_normalize(vectors: np.ndarray[[N, D]]) -> np.ndarray[[N, D]]:

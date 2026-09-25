@@ -1,10 +1,11 @@
 """`sp play` command."""
 
+from collections import defaultdict
 from pathlib import Path
 
 from local_smart_playlist.config import default_db_path, default_playlist_dir
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
-from local_smart_playlist.index.store import Store
+from local_smart_playlist.index.store import Store, TrackMeta
 from local_smart_playlist.query.contrast import baseline_vector, query_vector_contrast
 from local_smart_playlist.query.playlist import playlist_path, write_playlist
 from local_smart_playlist.query.prompts import LlmError, adapt_mood, caption_vocab
@@ -17,6 +18,21 @@ from local_smart_playlist.query.vocab_cal import (
 
 PREVIEW_COUNT = 10
 PLAY_DEFAULT_ALPHA = 0.7  # peak-window weight default for --seed-track ranking
+
+
+def merge_query_rankings(
+    rankings: list[list[tuple[TrackMeta, float]]],
+) -> list[tuple[TrackMeta, float]]:
+    """Union per-query rankings; keep each track's best score across queries."""
+    best_scores: defaultdict[str, float] = defaultdict(lambda: float("-inf"))
+    best_tracks: dict[str, TrackMeta] = {}
+    for ranking in rankings:
+        for track, score in ranking:
+            if score > best_scores[track.rel_path]:
+                best_scores[track.rel_path] = score
+                best_tracks[track.rel_path] = track
+    merged = [(best_tracks[path], score) for path, score in best_scores.items()]
+    return sorted(merged, key=lambda item: item[1], reverse=True)
 
 
 class PlayArgs:
@@ -56,30 +72,38 @@ class PlayArgs:
             else:
                 if alpha != PLAY_DEFAULT_ALPHA:
                     print("note: --alpha ignored (applies only with --seed-track)")  # noqa: T201 — CLI output
-                adapted = query
+                adapted = [query]
                 if llm:
                     try:
                         adapted = adapt_mood(query)
                     except LlmError:
-                        adapted = query  # offline fallback: embed the raw phrase
+                        adapted = [query]  # offline fallback: embed the raw phrase
+                    print("LLM queries:")  # noqa: T201 — CLI output
+                    for variant in adapted:
+                        print(f"  - {variant}")  # noqa: T201 — CLI output
                 model = load_model(device="cpu", text_only=True)
-                qvec = query_vector_contrast(adapted, model)
                 bvec = baseline_vector(model)
                 vocab_vecs = vocab_vector_bank_cached(store, model, vocab=caption_vocab())
-                ranked = rank_by_vocab_calibration(
-                    store,
-                    query_vec=qvec,
-                    vocab_vecs=vocab_vecs,
-                    margin_vec=bvec,
-                    k=n if n is not None else store.track_count(),
-                    exclude=exclude,
-                )
+                per_query_rankings = [
+                    rank_by_vocab_calibration(
+                        store,
+                        query_vec=query_vector_contrast(variant, model),
+                        vocab_vecs=vocab_vecs,
+                        margin_vec=bvec,
+                        k=store.track_count(),
+                        exclude=exclude,
+                    )
+                    for variant in adapted
+                ]
+                ranked = merge_query_rankings(per_query_rankings)
 
         cutoff = max(VOCAB_SCORE_FLOOR, min_score)
         if len(ranked) > 0:
             # Calibrated score is absolute: 0.5 = query fits as well as a typical
             # caption (neutral), 0.9+ = clearly on-mood. No best-relative cutoff.
             ranked = [(t, s) for t, s in ranked if s >= cutoff]
+            if n is not None:
+                ranked = ranked[:n]
         if len(ranked) == 0:
             raise SystemExit(
                 f"no tracks passed the cutoff (effective {cutoff:.2f} = max({VOCAB_SCORE_FLOOR}, "

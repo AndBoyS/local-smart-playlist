@@ -50,12 +50,16 @@ alpha * max cos(query, window) + (1-alpha) * cos(query, track mean);
 Index DB defaults to `.sp-index/index.db` relative to the current working
 directory; override with `--db`.
 
-LLM query alignment (`--llm`) uses any OpenAI-compatible endpoint. It adapts
-your phrase for embedding only: free text becomes a comma-attribute caption;
-an already-comma-separated attribute list passes through unchanged (typo and
-translation fixes only). It never adds genres or moods not implied by the
-input — appended padding like `mood` measurably worsens retrieval. A failed
-LLM call falls back to the raw phrase:
+LLM query adaptation (`--llm`) uses any OpenAI-compatible endpoint. For free
+text, it generates distinct MuQ-MuLan-style attribute-query variants using
+examples from the model's readout-caption vocabulary and shows them in the
+CLI. Each query ranks tracks separately; results are unioned by track, using
+that track's highest score across queries. Already-comma-separated
+attribute lists pass through as one query (typo and translation fixes only).
+Variants infer qualities implied by intent but avoid inventing specific
+instruments, genres, or vocal styles. If results feel too broad, refine the
+original request and run it again. A failed LLM call shows and uses the raw
+phrase:
 
 ```
 SP_LLM_BASE_URL  # default https://opencode.ai/zen/go/v1 (OpenCode Go)

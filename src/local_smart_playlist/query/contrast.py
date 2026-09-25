@@ -72,13 +72,7 @@ def baseline_vector(model: MuLanEmbedder[D], *, anchors: list[str] | None = None
 
 
 def query_vector_contrast(mood: str, model: MuLanEmbedder[D]) -> np.ndarray[[D]]:
-    """Unit embedding of the query text, as written.
-
-    No caption-style rephrasing (`"{q} mood."`): appending "mood" moved
-    comma-attribute queries off soft textures (TFS margin 0.120 → 0.040,
-    difficulties.md §2), so the query embeds exactly as the user (or the
-    LLM pass-through) supplied it.
-    """
+    """Unit embedding of the query text, as written."""
     vecs = l2_normalize(model.embed_texts([mood]))
     return vecs[0]
 

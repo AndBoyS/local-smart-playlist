@@ -161,6 +161,14 @@ def test_expand_mood_raises_on_unreachable(monkeypatch: Any, caplog: Any) -> Non
     assert any("llm adapt failed" in r.message for r in caplog.records)
 
 
+def test_adapt_prompt_uses_model_caption_examples() -> None:
+    prompt = prompts._adapt_prompt()
+    vocab = prompts.caption_vocab()
+    assert "Readout-caption style examples:" in prompt
+    assert vocab[0] in prompt
+    assert vocab[-1] in prompt
+
+
 def test_adapt_mood_logs_correction(monkeypatch: Any, caplog: Any) -> None:
     """Successful correction logs input -> output at INFO."""
     import logging
@@ -169,7 +177,15 @@ def test_adapt_mood_logs_correction(monkeypatch: Any, caplog: Any) -> None:
     def fake_post(url: str, **kwargs: Any) -> Any:
         return SimpleNamespace(
             raise_for_status=lambda: None,
-            json=lambda: {"choices": [{"message": {"content": "melancholic mood, slow tempo."}}]},
+            json=lambda: {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "1. energetic mood, driving beat.\n2. upbeat mood, danceable rhythm.\n3. focused mood, steady tempo.\n4. intense mood, fast pulse."
+                        }
+                    }
+                ]
+            },
         )
 
     import httpx
@@ -177,7 +193,12 @@ def test_adapt_mood_logs_correction(monkeypatch: Any, caplog: Any) -> None:
     monkeypatch.setattr(httpx, "post", fake_post)
     with caplog.at_level(logging.INFO, logger="local_smart_playlist.query.prompts"):
         result = prompts.adapt_mood("sad rainy morning")
-    assert result == "melancholic mood, slow tempo."
+    assert result == [
+        "energetic mood, driving beat.",
+        "upbeat mood, danceable rhythm.",
+        "focused mood, steady tempo.",
+        "intense mood, fast pulse.",
+    ]
     record = next(r for r in caplog.records if "llm adapt:" in r.message)
     assert "sad rainy morning" in record.message
-    assert "melancholic mood, slow tempo." in record.message
+    assert "energetic mood, driving beat." in record.message

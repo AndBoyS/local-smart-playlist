@@ -25,9 +25,7 @@ class PlayArgs(tap.TypedArgs):
     query: str = tap.arg(positional=True, metavar="QUERY", help="Mood word or phrase")
     n: int | None = tap.arg("-n", default=None, help="Number of tracks (default: all indexed)")
     out: str | None = tap.arg("-o", default=None, help="Output m3u8 path, or '-' for stdout")
-    llm: bool = tap.arg(
-        help="Rewrite/normalize the query with an LLM before embedding (correction only, never adds meaning)"
-    )
+    llm: bool = tap.arg(help="Generate and show MuQ-MuLan-style query variants with an LLM before embedding")
     seed_track: str | None = tap.arg(
         default=None, metavar="PATH", help="Use a track's vector as the query instead of text"
     )

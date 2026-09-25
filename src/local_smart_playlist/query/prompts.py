@@ -1,11 +1,12 @@
 """Mood query → LLM correction (OpenAI-compatible endpoint).
 
-Free text becomes a comma-attribute caption; existing comma-attribute lists
-pass through unchanged (typos/translation only)
+Free text becomes a small set of comma-attribute query variants; existing
+comma-attribute lists pass through unchanged (typos/translation only).
 """
 
 import logging
 import os
+import re
 import time
 from importlib import resources
 
@@ -28,19 +29,20 @@ def caption_vocab() -> list[str]:
 
 
 _ADAPT_PROMPT = (
-    "You rewrite a user's music mood query for a music-text embedding model "
-    "(MuQ-MuLan), trained on comma-separated lowercase attribute captions.\n\n"
-    "If the input is already a comma-separated attribute list (e.g. "
-    "'dreamy, melancholic'), return it UNCHANGED: translate non-English text "
-    "and fix typos only. Never append 'mood' or a period, never reword, "
-    "reorder or expand it — adding words measurably worsens retrieval.\n\n"
-    "If the input is free text (a sentence, a scene, a vibe), express every "
-    "meaning element of it as comma-separated lowercase attributes — mood, "
-    "genre, instrument, tempo, vocals — ending with a period. Example input "
-    "'sad rainy morning' → output 'rainy, melancholic, morning.'. Never add "
-    "styles, instruments or moods the input does not imply.\n\n"
-    "Keep the output one short line, no quotes, no commentary, nothing but "
-    "the rewritten query."
+    "You adapt a user's music request for MuQ-MuLan, a music-text embedding "
+    "model whose captions use short, comma-separated lowercase attributes.\n\n"
+    "For an input that is already a comma-separated attribute list (e.g. "
+    "'dreamy, melancholic'), return exactly one line, unchanged except for "
+    "translation or typo fixes. Never expand or reorder it.\n\n"
+    "For other inputs, infer the musical qualities reasonably implied by "
+    "the user's intent, then write distinct, faithful query variants. Include "
+    "as many as are meaningfully different; there is no fixed count. Each "
+    "variant must be a concise, comma-separated attribute "
+    "caption ending with a period. Use only attributes implied by the request; "
+    "do not invent a specific genre, instrument, or vocal style. Make variants "
+    "usefully different, not paraphrases. Example: 'music to train' can imply "
+    "energetic, driving, or steady rhythmic music, but not one specific genre.\n\n"
+    "Output one query per line, no bullets, numbering, quotes, or commentary."
 )
 
 
@@ -62,8 +64,22 @@ def _settings() -> tuple[str, str, str]:
     return base_url, model, api_key
 
 
-def adapt_mood(mood: str) -> str:
-    """Correct *mood* into one embedding-friendly phrase; raises LlmError on failure."""
+def _adapt_prompt() -> str:
+    """Add evenly spaced readout-caption examples as a model-specific style reference."""
+    vocab = caption_vocab()
+    count = min(12, len(vocab))
+    if count == 0:
+        return _ADAPT_PROMPT
+    if count == 1:
+        examples = vocab
+    else:
+        indices = [i * (len(vocab) - 1) // (count - 1) for i in range(count)]
+        examples = [vocab[i] for i in indices]
+    return f"{_ADAPT_PROMPT}\n\nReadout-caption style examples:\n" + "\n".join(examples)
+
+
+def adapt_mood(mood: str) -> list[str]:
+    """Adapt *mood* into embedding-friendly query variants; raises LlmError on failure."""
     import uuid
 
     import httpx
@@ -75,7 +91,7 @@ def adapt_mood(mood: str) -> str:
     body = {
         "model": model,
         "messages": [
-            {"role": "system", "content": _ADAPT_PROMPT},
+            {"role": "system", "content": _adapt_prompt()},
             {"role": "user", "content": f"Query: {mood}"},
         ],
         "temperature": 0.2,
@@ -92,11 +108,11 @@ def adapt_mood(mood: str) -> str:
         msg = f"LLM adaptation failed: {exc}"
         raise LlmError(msg) from exc
 
-    lines = [line.strip().lstrip("-*• ").strip() for line in content.splitlines()]
-    lines = [line for line in lines if line != ""]
+    lines = [re.sub(r"^(?:[-*•]\s*|\d+[.)]\s*)", "", line.strip()).strip("`\"'") for line in content.splitlines()]
+    lines = list(dict.fromkeys(line for line in lines if line != ""))
     if len(lines) == 0:
         logger.warning("llm adapt returned no text for %r via %s/%s", mood, base_url, model)
         raise LlmError("LLM adaptation returned no text")
     elapsed_ms = (time.perf_counter() - started) * 1000.0
-    logger.info("llm adapt: %r -> %r (%s, %.0f ms)", mood, lines[0], model, elapsed_ms)
-    return lines[0]
+    logger.info("llm adapt: %r -> %r (%s, %.0f ms)", mood, lines, model, elapsed_ms)
+    return lines

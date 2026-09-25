@@ -8,7 +8,7 @@ from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_m
 from local_smart_playlist.index.store import Store, TrackMeta
 from local_smart_playlist.query.contrast import baseline_vector, query_vector_contrast
 from local_smart_playlist.query.playlist import playlist_path, write_playlist
-from local_smart_playlist.query.prompts import LlmError, adapt_mood, caption_vocab
+from local_smart_playlist.query.prompts import adapt_mood, caption_vocab
 from local_smart_playlist.query.search import rank_by_similarity
 from local_smart_playlist.query.vocab_cal import (
     VOCAB_SCORE_FLOOR,
@@ -74,10 +74,7 @@ class PlayArgs:
                     print("note: --alpha ignored (applies only with --seed-track)")  # noqa: T201 — CLI output
                 adapted = [query]
                 if llm:
-                    try:
-                        adapted = adapt_mood(query)
-                    except LlmError:
-                        adapted = [query]  # offline fallback: embed the raw phrase
+                    adapted = adapt_mood(query)
                     print("LLM queries:")  # noqa: T201 — CLI output
                     for variant in adapted:
                         print(f"  - {variant}")  # noqa: T201 — CLI output

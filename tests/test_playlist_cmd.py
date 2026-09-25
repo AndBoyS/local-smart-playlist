@@ -1,7 +1,14 @@
 """Playlist command query-union tests."""
 
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+from local_smart_playlist.commands import playlist_cmd
 from local_smart_playlist.commands.playlist_cmd import merge_query_rankings
 from local_smart_playlist.index.store import TrackMeta
+from local_smart_playlist.query.prompts import LlmError
 
 
 def test_merge_query_rankings_keeps_unique_tracks_and_best_score() -> None:
@@ -21,3 +28,32 @@ def test_merge_query_rankings_keeps_unique_tracks_and_best_score() -> None:
         ("third.mp3", 0.85),
         ("first.mp3", 0.8),
     ]
+
+
+def test_play_crashes_when_llm_adaptation_fails(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    db = tmp_path / "index.db"
+    db.touch()
+    store = MagicMock()
+
+    def fail_adapt(_query: str) -> list[str]:
+        raise LlmError("failed")
+
+    def make_store(_db: Path) -> MagicMock:
+        return store
+
+    monkeypatch.setattr(playlist_cmd, "cap_torch_threads", lambda: None)
+    monkeypatch.setattr(playlist_cmd, "Store", make_store)
+    monkeypatch.setattr(playlist_cmd, "adapt_mood", fail_adapt)
+
+    with pytest.raises(LlmError, match="failed"):
+        playlist_cmd.PlayArgs.run(
+            query="sad",
+            db=db,
+            n=None,
+            out=None,
+            llm=True,
+            seed_track=None,
+            alpha=playlist_cmd.PLAY_DEFAULT_ALPHA,
+            min_score=0.9,
+            dry=True,
+        )

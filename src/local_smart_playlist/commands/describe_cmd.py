@@ -9,7 +9,7 @@ from shape_extensions import IntVar
 
 from local_smart_playlist.config import default_db_path
 from local_smart_playlist.embed.model import MODEL_ID, MuLanEmbedder, cap_torch_threads, load_model
-from local_smart_playlist.index.store import Store
+from local_smart_playlist.index.store import MetaKey, Store
 from local_smart_playlist.query import prompts
 from local_smart_playlist.query.phrases import track_documents
 
@@ -51,7 +51,7 @@ class DescribeArgs:
             raise SystemExit(f"no index at {db_path}; run `sp index` first")
 
         with Store(db_path) as store:
-            library_root = store.get_meta("library_root")
+            library_root = store.get_meta(MetaKey.LIBRARY_ROOT)
             store.require_model(MODEL_ID)
             if library_root is None:
                 raise SystemExit("index has no library root recorded; re-run `sp index`")
@@ -62,10 +62,14 @@ class DescribeArgs:
             track = store.get_track(rel_path)
             if track is None:
                 raise SystemExit(f"track not in index: {path}")
+            vectors = track.vectors
+            n_windows = track.n_windows
+            if vectors is None or n_windows is None:
+                raise RuntimeError(f"stored track has incomplete data: {rel_path}")
             model = load_model(device="cpu", text_only=True)
-            captions = rank_captions(model, mean_vec=track.mean_vec, vocab=prompts.caption_vocab(), top_n=n)
+            captions = rank_captions(model, mean_vec=vectors.mean_vec, vocab=prompts.caption_vocab(), top_n=n)
 
-        rprint(f"[bold]{track.title}[/bold]  {track.duration:.1f}s  {track.n_windows} windows  {rel_path}")
+        rprint(f"[bold]{track.title}[/bold]  {track.duration:.1f}s  {n_windows} windows  {rel_path}")
         table = Table(title="caption-vocab neighbors")
         table.add_column("sim", justify="right", style="cyan")
         table.add_column("caption")

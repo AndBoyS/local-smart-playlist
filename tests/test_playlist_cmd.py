@@ -4,17 +4,18 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from shape_extensions import IntVar
 
 from local_smart_playlist.commands import playlist_cmd
 from local_smart_playlist.commands.playlist_cmd import merge_query_rankings
-from local_smart_playlist.index.store import TrackMeta
+from local_smart_playlist.index.store import TrackData
 from local_smart_playlist.query.prompts import LlmError
 
 
 def test_merge_query_rankings_keeps_unique_tracks_and_best_score() -> None:
-    first = TrackMeta(rel_path="first.mp3", title="first", duration=100.0)
-    shared = TrackMeta(rel_path="shared.mp3", title="shared", duration=120.0)
-    third = TrackMeta(rel_path="third.mp3", title="third", duration=90.0)
+    first = TrackData(rel_path="first.mp3", title="first", duration=100.0)
+    shared = TrackData(rel_path="shared.mp3", title="shared", duration=120.0)
+    third = TrackData(rel_path="third.mp3", title="third", duration=90.0)
 
     merged = merge_query_rankings(
         [
@@ -36,17 +37,19 @@ def test_play_starts_vacuum_after_closing_store(monkeypatch: pytest.MonkeyPatch,
     store = MagicMock()
     store.__enter__.return_value = store
     store.get_meta.return_value = str(tmp_path)
-    store.get_track.return_value = MagicMock(rel_path="seed.mp3", mean_vec=object())
+    store.get_track.return_value = MagicMock(rel_path="seed.mp3", vectors=MagicMock(mean_vec=object()))
     store.track_count.return_value = 1
     store.vacuum_if_needed.return_value.recommended = True
-    track = TrackMeta(rel_path="result.mp3", title="result", duration=60.0)
+    track = TrackData(rel_path="result.mp3", title="result", duration=60.0)
 
     monkeypatch.setattr(playlist_cmd, "cap_torch_threads", lambda: None)
 
     def make_store(_db: Path) -> MagicMock:
         return store
 
-    def fake_rank(*_args: object, **_kwargs: object) -> list[tuple[TrackMeta, float]]:
+    def fake_rank[D: IntVar](
+        *_args: object, **_kwargs: object
+    ) -> list[tuple[TrackData[D], float]]:
         return [(track, 0.95)]
 
     monkeypatch.setattr(playlist_cmd, "Store", make_store)

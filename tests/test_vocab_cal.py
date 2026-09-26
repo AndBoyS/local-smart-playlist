@@ -10,13 +10,14 @@ if TYPE_CHECKING:
     import torch
 
 from local_smart_playlist.embed.model import MuLanEmbedder
-from local_smart_playlist.index.store import Store
+from local_smart_playlist.index.store import MetaKey, Store
 from local_smart_playlist.query.contrast import baseline_vector
 from local_smart_playlist.query.vocab_cal import (
     MARGIN_TAU,
     rank_by_vocab_calibration,
     vocab_calibration_score,
     vocab_vector_bank,
+    vocab_vector_bank_cached,
 )
 
 DIM = 32
@@ -37,9 +38,7 @@ def fake_embedder(texts: list[str]) -> np.ndarray:
     return out
 
 
-def _torch_model(
-    *, texts: "list[str] | None" = None, wavs: "torch.Tensor | None" = None
-) -> "torch.Tensor":
+def _torch_model(*, texts: "list[str] | None" = None, wavs: "torch.Tensor | None" = None) -> "torch.Tensor":
     import torch
 
     assert texts is not None
@@ -50,9 +49,7 @@ def _embedder_for(mapping: dict[str, int]) -> MuLanEmbedder[32]:
     """MuLanEmbedder wrapping the hashed-basis model: text -> basis[mapping[text]]."""
 
     class _Model:
-        def __call__(
-            self, *, texts: "list[str] | None" = None, wavs: "torch.Tensor | None" = None
-        ) -> "torch.Tensor":
+        def __call__(self, *, texts: "list[str] | None" = None, wavs: "torch.Tensor | None" = None) -> "torch.Tensor":
             import torch
 
             assert texts is not None
@@ -75,8 +72,8 @@ def upsert_track(store: Store, rel_path: str, window_vecs: np.ndarray) -> None:
         title=rel_path,
         model="fake",
         indexed_at="now",
+        window_vecs=window_vecs,
     )
-    store.add_windows(rel_path=rel_path, window_vecs=window_vecs)
 
 
 def _vocab_vecs(mapping: dict[str, int]) -> np.ndarray:
@@ -87,6 +84,33 @@ def test_vocab_bank_is_unit_rows() -> None:
     bank = _vocab_vecs({"cap a": 1, "cap b": 2, "cap c": 3, "cap d": 4})
     assert bank.shape == (4, DIM)
     assert np.allclose(np.linalg.norm(bank, axis=-1), 1.0, atol=1e-5)
+
+
+def test_vocab_bank_cache_uses_fixed_meta_key(tmp_path: Path) -> None:
+    calls: list[int] = []
+
+    class CountingModel:
+        def __call__(self, *, texts: "list[str] | None" = None, wavs: "torch.Tensor | None" = None) -> "torch.Tensor":
+            import torch
+
+            assert texts is not None
+            calls.append(len(texts))
+            return torch.from_numpy(fake_embedder(texts))
+
+    model = MuLanEmbedder(CountingModel(), dim=DIM)
+    with Store(tmp_path / "cache.db", embed_dim=DIM) as store:
+        first = vocab_vector_bank_cached(store, model, vocab=VOCAB)
+        encoded = store.get_meta(MetaKey.VOCAB_VECS)
+        assert encoded is not None
+        assert encoded.startswith("v1\nOpenMuQ/MuQ-MuLan-large\n")
+
+        second = vocab_vector_bank_cached(store, model, vocab=VOCAB)
+        assert np.array_equal(first, second)
+        assert calls == [len(VOCAB)]
+
+        changed_vocab = ["cap b", "cap a", "cap c", "cap d"]
+        _ = vocab_vector_bank_cached(store, model, vocab=changed_vocab)
+        assert calls == [len(VOCAB), len(changed_vocab)]
 
 
 def test_percentile_counts_captions_beaten() -> None:
@@ -107,9 +131,7 @@ def test_score_averages_window_percentiles() -> None:
     """Two windows: one at 0.75, one at 0.0 -> track score 0.375, coverage 0.5."""
     q = basis(0)
     bank = _vocab_vecs({"cap a": 0, "cap b": 1, "cap c": 2, "cap d": 3})
-    result = vocab_calibration_score(
-        np.stack([basis(0), basis(1)]), query_vec=q, vocab_vecs=bank, margin_vec=basis(5)
-    )
+    result = vocab_calibration_score(np.stack([basis(0), basis(1)]), query_vec=q, vocab_vecs=bank, margin_vec=basis(5))
     assert result.score == pytest.approx(0.375, abs=1e-6)
     assert result.coverage == pytest.approx(0.5)
 
@@ -121,9 +143,7 @@ def test_guard_falls_back_to_margin_sigmoid() -> None:
     bank = _vocab_vecs({"cap a": 1, "cap b": 2, "cap c": 3, "cap d": 4})
     margin_vec = basis(5)
     # margin = cos(w, q) - cos(w, margin_vec) = 1.0 -> sigmoid(20) ~ 1
-    hot = vocab_calibration_score(
-        np.stack([np.asarray(basis(0))]), query_vec=q, vocab_vecs=bank, margin_vec=margin_vec
-    )
+    hot = vocab_calibration_score(np.stack([np.asarray(basis(0))]), query_vec=q, vocab_vecs=bank, margin_vec=margin_vec)
     expected_hot = float(1.0 / (1.0 + np.exp(-1.0 / MARGIN_TAU)))  # pyrefly: ignore[unknown-argument-type]
     assert hot.score == pytest.approx(expected_hot, abs=1e-6)
     assert hot.coverage == pytest.approx(1.0)
@@ -149,9 +169,7 @@ def test_rank_orders_by_calibration_and_breaks_ties() -> None:
     # one perfect window, rest orthogonal: mean percentile (0.75 + 0 + 0 + 0)/4
     upsert_track(store, "peaky.mp3", np.stack([basis(0), basis(9), basis(9), basis(9)]))
 
-    ranked = rank_by_vocab_calibration(
-        store, query_vec=q, vocab_vecs=bank, margin_vec=margin_vec, k=3
-    )
+    ranked = rank_by_vocab_calibration(store, query_vec=q, vocab_vecs=bank, margin_vec=margin_vec, k=3)
     assert [t.rel_path for t, _ in ranked] == ["a-steady.mp3", "b-steady.mp3", "peaky.mp3"]
     assert ranked[0][1] == pytest.approx(ranked[1][1], abs=1e-6)
     assert ranked[2][1] == pytest.approx(0.1875, abs=1e-6)

@@ -26,7 +26,7 @@ import numpy as np
 from shape_extensions import IntVar
 
 from local_smart_playlist.embed.model import MuLanEmbedder
-from local_smart_playlist.index.store import Store, TrackMeta
+from local_smart_playlist.index.store import Store, TrackData
 from local_smart_playlist.numpy_helpers import l2_normalize
 
 W = IntVar("W")  # window count
@@ -119,7 +119,7 @@ def rank_by_contrast(
     baseline_vec: np.ndarray[[D]],
     k: int,
     exclude: set[str] | None = None,
-) -> list[tuple[TrackMeta, float]]:
+) -> list[tuple[TrackData[D], float]]:
     """Rank every indexed track by sustained-mood contrast; returns top *k*.
 
     Score = median over the track's windows of (cos(window, query) −
@@ -129,7 +129,7 @@ def rank_by_contrast(
     excluded = set() if exclude is None else set(exclude)
     windows = store.load_windows(store.track_rel_paths())
 
-    scored: list[tuple[TrackMeta, float, float, str]] = []
+    scored: list[tuple[TrackData[D], float, float, str]] = []
     for track in store.track_meta():
         if track.rel_path in excluded:
             continue

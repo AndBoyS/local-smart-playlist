@@ -7,7 +7,7 @@ from rich.table import Table
 
 from local_smart_playlist.config import default_db_path
 from local_smart_playlist.embed.model import MODEL_ID
-from local_smart_playlist.index.store import Store
+from local_smart_playlist.index.store import MetaKey, Store
 
 
 class StatusArgs:
@@ -23,9 +23,9 @@ class StatusArgs:
             table = Table(title=f"sp index — {db_path}")
             table.add_column("key", style="cyan")
             table.add_column("value")
-            lib = store.get_meta("library_root")
-            model_meta = store.get_meta("model")
-            schema = store.get_meta("schema_version")
+            lib = store.get_meta(MetaKey.LIBRARY_ROOT)
+            model_meta = store.get_meta(MetaKey.MODEL)
+            schema = store.get_meta(MetaKey.SCHEMA_VERSION)
             table.add_row("library root", lib if lib is not None else "—")
             table.add_row("model", model_meta if model_meta is not None else MODEL_ID)
             table.add_row("tracks", str(store.track_count()))

@@ -31,14 +31,13 @@ def test_vacuum_if_needed_compacts_database(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.setattr(store_module, "MIN_VACUUM_FREE_BYTES", 1)
     monkeypatch.setattr(store_module, "MIN_VACUUM_FREE_FRACTION", 0.0)
     with Store(tmp_path / "vacuum.db", embed_dim=64) as store:
-        _ = store._conn.execute("CREATE TABLE vacuum_test_payload (data BLOB NOT NULL)")
-        _ = store._conn.executemany(
-            "INSERT INTO vacuum_test_payload(data) VALUES (?)",
-            [(b"x" * (64 * 1024),) for _ in range(16)],
-        )
-        store._conn.commit()
-        _ = store._conn.execute("DELETE FROM vacuum_test_payload")
-        store._conn.commit()
+        with store._engine.begin() as connection:
+            _ = connection.exec_driver_sql("CREATE TABLE vacuum_test_payload (data BLOB NOT NULL)")
+            _ = connection.exec_driver_sql(
+                "INSERT INTO vacuum_test_payload(data) VALUES (?)",
+                [(b"x" * (64 * 1024),) for _ in range(16)],
+            )
+            _ = connection.exec_driver_sql("DELETE FROM vacuum_test_payload")
         preview = store.vacuum_if_needed(execute=False)
         assert preview.recommended
         assert not preview.performed

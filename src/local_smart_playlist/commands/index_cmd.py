@@ -17,7 +17,7 @@ from local_smart_playlist.config import default_db_path
 from local_smart_playlist.embed.aggregate import aggregate
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
 from local_smart_playlist.index.library import discover_audio, display_title, relative_posix
-from local_smart_playlist.index.store import Store
+from local_smart_playlist.index.store import MetaKey, Store
 
 
 class IndexArgs:
@@ -37,8 +37,8 @@ class IndexArgs:
             raise SystemExit(f"no audio files under {root}")
 
         with Store(db_path) as store:
-            store.set_meta("library_root", str(root))
-            store.set_meta("model", MODEL_ID)
+            store.set_meta(MetaKey.LIBRARY_ROOT, str(root))
+            store.set_meta(MetaKey.MODEL, MODEL_ID)
             todo_paths = [p for p in files if rescan or not store.has_track(relative_posix(root, p))]
 
             # Fail fast on model loading (download/device problems) instead of
@@ -75,8 +75,8 @@ class IndexArgs:
                             title=display_title(root, path),
                             model=MODEL_ID,
                             indexed_at=now,
+                            window_vecs=window_vecs,
                         )
-                        store.add_windows(rel_path=rel, window_vecs=window_vecs)
                     except decode.DecodeError as exc:
                         store.record_failure(rel_path=rel, error=str(exc), now=now)
                     except Exception as exc:  # noqa: BLE001 — one bad track must not abort a full index run

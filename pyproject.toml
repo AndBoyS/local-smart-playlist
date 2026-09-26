@@ -13,11 +13,11 @@ dependencies = [
     "safetensors>=0.4.3",
     "numpy",
     "pyrefly-numpy-stubs",
-    "sqlite-vec>=0.1.6",
     "typed-argparse>=0.3.1",
     "rich",
     "httpx[socks]",
     "muq>=0.1.0",
+    "sqlalchemy>=2.0.54",
 ]
 
 [project.scripts]

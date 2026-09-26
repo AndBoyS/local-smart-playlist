@@ -42,8 +42,8 @@ windows must be re-indexed. Scores are absolute calibrated probabilities:
 0.5 = the query fits as well as a typical caption, 0.9+ = clearly on-mood;
 `--min-score` is that absolute cutoff (default 0.9), floored at 0.5.
 
-`--seed-track` keeps the two-stage audio ranking:
-track-mean KNN prefilter, then exact peak-window rescore. Seed score =
+`--seed-track` uses two-stage audio ranking:
+exact NumPy track-mean cosine prefilter, then peak-window rescore. Seed score =
 alpha * max cos(query, window) + (1-alpha) * cos(query, track mean);
 `--alpha` tunes peak-mood vs whole-track mood (default 0.7).
 

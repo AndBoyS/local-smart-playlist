@@ -11,7 +11,7 @@ from local_smart_playlist.embed.model import MuLanEmbedder
 
 if TYPE_CHECKING:
     import torch
-from local_smart_playlist.index.store import Store
+from local_smart_playlist.index.store import MetaKey, Store
 from local_smart_playlist.query import prompts
 
 DIM = 8
@@ -127,7 +127,7 @@ def test_run_track_not_in_index(monkeypatch: Any, tmp_path: Path) -> None:
     root.mkdir()
     db = tmp_path / "index.db"
     with Store(db, embed_dim=DIM) as store:
-        store.set_meta("library_root", str(root))
+        store.set_meta(MetaKey.LIBRARY_ROOT, str(root))
         upsert_track(store, "other.flac", basis(0))
     with pytest.raises(SystemExit, match="track not in index"):
         describe_cmd.DescribeArgs.run(path=str(root / "missing.flac"), db=db, n=10)
@@ -140,7 +140,7 @@ def test_run_describes_track(monkeypatch: Any, tmp_path: Path, capsys: Any) -> N
     root.mkdir()
     db = tmp_path / "index.db"
     with Store(db, embed_dim=DIM) as store:
-        store.set_meta("library_root", str(root))
+        store.set_meta(MetaKey.LIBRARY_ROOT, str(root))
         upsert_track(store, "song.flac", basis(0))
 
     monkeypatch.setattr(prompts, "caption_vocab", lambda: ["caption A", "caption B"])

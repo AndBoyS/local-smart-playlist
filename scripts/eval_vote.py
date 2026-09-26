@@ -22,7 +22,7 @@ import numpy as np
 from shape_extensions import IntVar
 
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
-from local_smart_playlist.index.store import Store, TrackRow
+from local_smart_playlist.index.store import Store, TrackData
 from local_smart_playlist.query.contrast import MOOD_ANCHORS, query_vector_contrast
 
 D = IntVar("D")  # embedding dim
@@ -107,7 +107,7 @@ def make_variants(twin_idx: int) -> list[Variant]:
     return variants
 
 
-def _matches(track: TrackRow[D], needle: str) -> bool:
+def _matches(track: TrackData[D], needle: str) -> bool:
     needle_l = needle.lower()
     return needle_l in track.rel_path.lower() or needle_l in track.title.lower()
 

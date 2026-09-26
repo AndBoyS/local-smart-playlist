@@ -32,7 +32,7 @@ import numpy as np
 from shape_extensions import IntVar
 
 from local_smart_playlist.embed.model import MODEL_ID, MuLanEmbedder
-from local_smart_playlist.index.store import Store, TrackMeta
+from local_smart_playlist.index.store import MetaKey, Store, TrackData
 from local_smart_playlist.numpy_helpers import l2_normalize, reshape
 
 W = IntVar("W")  # window count
@@ -60,21 +60,33 @@ def vocab_vector_bank(model: MuLanEmbedder[D], vocab: list[str]) -> np.ndarray[[
     return l2_normalize(vecs)
 
 
-def _vocab_bank_key(vocab: list[str]) -> str:
-    """Meta key pinning the cached bank to vocab content and embedding model."""
-    digest = hashlib.sha1("\n".join(vocab).encode("utf-8")).hexdigest()
-    return f"vocab_vecs:{MODEL_ID}:{digest}"
+_CACHE_FORMAT = "v1"
+_CACHE_PART_COUNT = 4
 
 
-def _encode_bank(vecs: np.ndarray[[V, D]]) -> str:
-    """float32 bytes → base64, for the meta table's TEXT column."""
-    return base64.b64encode(np.ascontiguousarray(vecs, dtype=np.float32).tobytes()).decode("ascii")
+def _vocab_digest(vocab: list[str]) -> str:
+    """Digest vocabulary text for cache validation."""
+    return hashlib.sha1("\n".join(vocab).encode("utf-8")).hexdigest()
 
 
-def _decode_bank(*, blob: str, dim: int, n: int) -> np.ndarray[[V, D]] | None:
-    """Inverse of :func:`_encode_bank`; None when the payload shape does not fit."""
+def _encode_bank(vecs: np.ndarray[[V, D]], *, vocab_digest: str) -> str:
+    """Encode model, vocab identity, and float32 vectors into meta TEXT value."""
+    encoded_vecs = base64.b64encode(np.ascontiguousarray(vecs, dtype=np.float32).tobytes()).decode("ascii")
+    return "\n".join((_CACHE_FORMAT, MODEL_ID, vocab_digest, encoded_vecs))
+
+
+def _decode_bank(*, blob: str, dim: int, n: int, vocab_digest: str) -> np.ndarray[[V, D]] | None:
+    """Decode cache value; return None when identity, encoding, or shape mismatches."""
+    parts = blob.split("\n", maxsplit=3)
+    if (
+        len(parts) != _CACHE_PART_COUNT
+        or parts[0] != _CACHE_FORMAT
+        or parts[1] != MODEL_ID
+        or parts[2] != vocab_digest
+    ):
+        return None
     try:
-        arr = np.frombuffer(base64.b64decode(blob, validate=True), dtype=np.float32)
+        arr = np.frombuffer(base64.b64decode(parts[3], validate=True), dtype=np.float32)
     except ValueError:
         return None
     if arr.size != n * dim:
@@ -83,21 +95,19 @@ def _decode_bank(*, blob: str, dim: int, n: int) -> np.ndarray[[V, D]] | None:
 
 
 def vocab_vector_bank_cached(store: Store, model: MuLanEmbedder[D], *, vocab: list[str]) -> np.ndarray[[V, D]]:
-    """Unit-norm vocab embeddings, cached in the store's meta table.
+    """Unit-norm vocab embeddings, cached under one fixed metadata key.
 
-    Hit: decoded from meta (row count and dim validated against the request).
-    Miss: embed the 215 captions once (~1 s) and persist for every later run.
-    The key hashes the vocab text and model id, so vocab or model changes
-    invalidate silently.
+    Cache value includes format, model, and vocabulary digest; changes silently
+    invalidate the prior value. Decoding also validates row count and dimension.
     """
-    key = _vocab_bank_key(vocab)
-    cached = store.get_meta(key)
+    digest = _vocab_digest(vocab)
+    cached = store.get_meta(MetaKey.VOCAB_VECS)
     if cached is not None:
-        vecs = _decode_bank(blob=cached, dim=model.dim, n=len(vocab))
+        vecs = _decode_bank(blob=cached, dim=model.dim, n=len(vocab), vocab_digest=digest)
         if vecs is not None:
             return vecs
     vecs = vocab_vector_bank(model, vocab)
-    store.set_meta(key, _encode_bank(vecs))
+    store.set_meta(MetaKey.VOCAB_VECS, _encode_bank(vecs, vocab_digest=digest))
     return vecs
 
 
@@ -148,7 +158,7 @@ def rank_by_vocab_calibration(
     margin_vec: np.ndarray[[D]],
     k: int,
     exclude: set[str] | None = None,
-) -> list[tuple[TrackMeta, float]]:
+) -> list[tuple[TrackData[D], float]]:
     """Rank every indexed track by vocab-calibrated sustained mood; returns top *k*.
 
     Mirrors :func:`rank_by_contrast`: full scan over stored window vectors,
@@ -158,7 +168,7 @@ def rank_by_vocab_calibration(
     excluded = set() if exclude is None else set(exclude)
     windows = store.load_windows(store.track_rel_paths())
 
-    scored: list[tuple[TrackMeta, float, float, str]] = []
+    scored: list[tuple[TrackData[D], float, float, str]] = []
     for track in store.track_meta():
         if track.rel_path in excluded:
             continue

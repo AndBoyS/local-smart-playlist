@@ -13,8 +13,10 @@ Usage:
 import argparse
 from pathlib import Path
 
+from shape_extensions import IntVar
+
 from local_smart_playlist.embed.model import MODEL_ID, MuLanEmbedder, cap_torch_threads, load_model
-from local_smart_playlist.index.store import Store, TrackMeta
+from local_smart_playlist.index.store import Store, TrackData
 from local_smart_playlist.query.contrast import baseline_vector, query_vector_contrast
 from local_smart_playlist.query.prompts import caption_vocab
 from local_smart_playlist.query.vocab_cal import VOCAB_SCORE_FLOOR, rank_by_vocab_calibration, vocab_vector_bank
@@ -31,7 +33,9 @@ PERCENTILE_SCALE = 100.0
 DEFAULT_MIN_SCORE = 0.9  # sp play --min-score default; kept = score >= max(VOCAB_SCORE_FLOOR, this)
 
 
-def rank_full(store: Store, model: MuLanEmbedder[512], *, query: str) -> list[tuple[TrackMeta, float]]:
+def rank_full[D: IntVar](
+    store: Store, model: MuLanEmbedder[D], *, query: str
+) -> list[tuple[TrackData[D], float]]:
     """Full-library ranking with the production ranker (caption-vocab calibration)."""
     qvec = query_vector_contrast(query, model)
     bvec = baseline_vector(model)
@@ -47,7 +51,7 @@ def rank_full(store: Store, model: MuLanEmbedder[512], *, query: str) -> list[tu
     return [(track, float(score)) for track, score in ranked]
 
 
-def report(ranked: list[tuple[TrackMeta, float]], *, query: str, exemplars: list[str]) -> None:
+def report[D: IntVar](ranked: list[tuple[TrackData[D], float]], *, query: str, exemplars: list[str]) -> None:
     total = len(ranked)
     print(f"== {query!r} — {total} ranked tracks")
     for needle in exemplars:
@@ -70,7 +74,7 @@ def report(ranked: list[tuple[TrackMeta, float]], *, query: str, exemplars: list
         print(f"     {score:.3f}  {track.title}")
 
 
-def _matches(track: TrackMeta, needle: str) -> bool:
+def _matches[D: IntVar](track: TrackData[D], needle: str) -> bool:
     needle_l = needle.lower()
     return needle_l in track.rel_path.lower() or needle_l in track.title.lower()
 

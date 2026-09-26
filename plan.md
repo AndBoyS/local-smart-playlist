@@ -9,7 +9,7 @@ late night".
 - Python 3.13, managed with **uv** (`uv_build` backend)
 - **MuQ-MuLan** (`OpenMuQ/MuQ-MuLan-large`, 512-dim joint audio/text space,
   24 kHz input, CC-BY-NC weights) via the `muq` pip package + torch
-- **LSP index**: sqlite + **sqlite-vec**
+- **LSP index**: SQLite via SQLAlchemy ORM, NumPy full-scan vector ranking
 - Optional LLM caption expansion (OpenAI-compatible endpoint / ollama)
 - CLI: **typed-argparse**
 - Lint: **ruff**, Types: **pyrefly** (strict), Tests: **pytest**, CI: GitHub Actions
@@ -60,7 +60,7 @@ local-smart-playlist/
 │   │   └── aggregate.py             # mean/p90 track vectors
 │   ├── index/
 │   │   ├── library.py               # file discovery, stable track ids
-│   │   └── store.py                 # sqlite-vec schema, upsert, resumable scan
+│   │   └── store.py                 # ORM schema, vector storage, resumable scan
 │   ├── query/
 │   │   ├── prompts.py               # mood → LLM caption expansion
 │   │   ├── search.py                # text embed, max-window scoring, rank
@@ -89,7 +89,7 @@ sp status
 ## Dependencies
 
 ```
-transformers, torch, soundfile, numpy, sqlite-vec, typed-argparse, rich
+transformers, torch, soundfile, numpy, sqlalchemy, typed-argparse, rich
 dev: pyrefly, ruff, pytest, types-requests
 optional: httpx (LLM expansion client)
 ```

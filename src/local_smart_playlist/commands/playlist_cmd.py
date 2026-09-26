@@ -4,10 +4,12 @@ import logging
 from collections import defaultdict
 from pathlib import Path
 
+from shape_extensions import IntVar
+
 from local_smart_playlist.commands import vacuum_worker
 from local_smart_playlist.config import default_db_path, default_playlist_dir
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
-from local_smart_playlist.index.store import Store, TrackMeta
+from local_smart_playlist.index.store import MetaKey, Store, TrackData
 from local_smart_playlist.query.contrast import baseline_vector, query_vector_contrast
 from local_smart_playlist.query.playlist import playlist_path, write_playlist
 from local_smart_playlist.query.prompts import adapt_mood, caption_vocab
@@ -24,12 +26,12 @@ PREVIEW_COUNT = 10
 PLAY_DEFAULT_ALPHA = 0.7  # peak-window weight default for --seed-track ranking
 
 
-def merge_query_rankings(
-    rankings: list[list[tuple[TrackMeta, float]]],
-) -> list[tuple[TrackMeta, float]]:
+def merge_query_rankings[D: IntVar](
+    rankings: list[list[tuple[TrackData[D], float]]],
+) -> list[tuple[TrackData[D], float]]:
     """Union per-query rankings; keep each track's best score across queries."""
     best_scores: defaultdict[str, float] = defaultdict(lambda: float("-inf"))
-    best_tracks: dict[str, TrackMeta] = {}
+    best_tracks: dict[str, TrackData[D]] = {}
     for ranking in rankings:
         for track, score in ranking:
             if score > best_scores[track.rel_path]:
@@ -63,7 +65,7 @@ class PlayArgs:
         library_root: str | None = None
         vacuum_recommended = False
         with Store(db_path) as store:
-            library_root = store.get_meta("library_root")
+            library_root = store.get_meta(MetaKey.LIBRARY_ROOT)
             store.require_model(MODEL_ID)
             exclude: set[str] = set()
             if seed_track is not None:
@@ -71,8 +73,15 @@ class PlayArgs:
                 if seed is None:
                     raise SystemExit(f"seed track not in index: {seed_track}")
                 exclude.add(seed.rel_path)
+                seed_vectors = seed.vectors
+                if seed_vectors is None:
+                    raise RuntimeError(f"stored track has no vectors: {seed_track}")
                 ranked = rank_by_similarity(
-                    store, seed.mean_vec, k=n if n is not None else store.track_count(), exclude=exclude, alpha=alpha
+                    store,
+                    seed_vectors.mean_vec,
+                    k=n if n is not None else store.track_count(),
+                    exclude=exclude,
+                    alpha=alpha,
                 )
             else:
                 if alpha != PLAY_DEFAULT_ALPHA:

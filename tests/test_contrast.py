@@ -40,9 +40,7 @@ def _embedder_for(mapping: dict[str, int]) -> MuLanEmbedder[32]:
     """MuLanEmbedder wrapping the hashed-basis model: text -> basis[mapping[text]]."""
 
     class _Model:
-        def __call__(
-            self, *, texts: "list[str] | None" = None, wavs: "torch.Tensor | None" = None
-        ) -> "torch.Tensor":
+        def __call__(self, *, texts: "list[str] | None" = None, wavs: "torch.Tensor | None" = None) -> "torch.Tensor":
             import torch
 
             assert texts is not None
@@ -51,9 +49,7 @@ def _embedder_for(mapping: dict[str, int]) -> MuLanEmbedder[32]:
     return MuLanEmbedder(_Model(), dim=DIM)
 
 
-def _torch_model(
-    *, texts: "list[str] | None" = None, wavs: "torch.Tensor | None" = None
-) -> "torch.Tensor":
+def _torch_model(*, texts: "list[str] | None" = None, wavs: "torch.Tensor | None" = None) -> "torch.Tensor":
     import torch
 
     assert texts is not None
@@ -79,8 +75,8 @@ def upsert_track(store: Store, rel_path: str, window_vecs: np.ndarray) -> None:
         title=rel_path,
         model="fake",
         indexed_at="now",
+        window_vecs=window_vecs,
     )
-    store.add_windows(rel_path=rel_path, window_vecs=window_vecs)
 
 
 def test_mood_bank_covers_broad_moods() -> None:

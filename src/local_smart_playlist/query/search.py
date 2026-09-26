@@ -1,24 +1,15 @@
 """Query embedding and ranking against the track store."""
 
-from dataclasses import dataclass
-
 import numpy as np
 from shape_extensions import IntVar
 
-from local_smart_playlist.index.store import Store, TrackRow
+from local_smart_playlist.index.store import Store, TrackData
 
 T = IntVar("T")  # total windows across candidate tracks
 D = IntVar("D")  # embedding dim
 
 PEAK_WEIGHT = 0.7  # alpha: peak-window vs track-mean blend
 CANDIDATE_POOL = 10  # prefilter fetches k * this many candidates by track mean
-KNN_LIMIT = 4096  # sqlite-vec KNN k cap
-
-
-@dataclass(frozen=True)
-class _Candidate:
-    rel_path: str
-    mean_sim: float
 
 
 def _rescore_flat(
@@ -59,62 +50,55 @@ def _rescore_flat(
     return scores
 
 
-def rank_hybrid(
+def rank_by_similarity(
     store: Store,
     query_vec: np.ndarray[[D]],
     *,
     k: int,
     exclude: set[str] | None = None,
     alpha: float = PEAK_WEIGHT,
-) -> list[tuple[TrackRow[D], float]]:
-    """Two-stage ranking: track-mean prefilter, then exact peak-window rescore.
+) -> list[tuple[TrackData[D], float]]:
+    """Rank tracks for a query or seed vector with exact peak-window rescoring.
 
     Score = alpha * max cos(query, window) + (1 - alpha) * cos(query, track mean).
     Legacy tracks without stored windows fall back to their mean cos.
     """
     excluded = exclude if exclude is not None else set()
     total = store.track_count()
-    want = min(k * CANDIDATE_POOL + len(excluded), total)
+    query_amount = min(k * CANDIDATE_POOL + len(excluded), total)
+    if query_amount == 0:
+        return []
 
-    if want > KNN_LIMIT:
-        # Full-library ranking: plain scan over mean vectors (numpy matmul),
-        # avoiding the sqlite-vec KNN row cap.
-        track_to_mean = store.all_track_means()
-        sims = (
-            np.stack(list(track_to_mean.values())).astype(np.float64) @ np.asarray(query_vec, dtype=np.float64)
-        ).ravel()
-        order = np.argsort(-sims)[:want]
-        candidates = []
-        paths = list(track_to_mean)
-        for i in order:
-            rel_path = paths[int(i.item())]
-            candidates.append(_Candidate(rel_path=rel_path, mean_sim=float(sims[i])))
-    else:
-        knn = store.knn(query_vec=query_vec, k=want)
-        candidates = [_Candidate(hit.rel_path, 1.0 - hit.distance) for hit in knn]
+    track_to_mean = store.all_track_means()
+    if len(track_to_mean) == 0:
+        return []
+    paths = list(track_to_mean)
+    mean_matrix = np.stack(list(track_to_mean.values())).astype(np.float64)
+    sims = (mean_matrix @ np.asarray(query_vec, dtype=np.float64)).ravel()
+    order = np.argsort(-sims)[:query_amount]
+    path_to_mean_sim = {paths[int(i.item())]: float(sims[i]) for i in order}
 
-    cand_paths = [c.rel_path for c in candidates if c.rel_path not in excluded]
-    paths, big, counts = store.load_windows_flat(cand_paths)
-    scores = _rescore_flat(paths=paths, big=big, counts=counts, query_vec=query_vec, alpha=alpha)
+    cand_paths = [rel_path for rel_path in path_to_mean_sim if rel_path not in excluded]
+    flat = store.load_windows_batched(cand_paths)
+    scores = _rescore_flat(
+        paths=flat.rel_paths,
+        big=flat.vec_matrix,
+        counts=flat.window_sizes,
+        query_vec=query_vec,
+        alpha=alpha,
+    )
     tracks = store.get_tracks(cand_paths)
 
-    scored: list[tuple[TrackRow[D], float]] = []
-    for cand in candidates:
-        track = tracks.get(cand.rel_path)
+    scored: list[tuple[TrackData[D], float]] = []
+    for rel_path, mean_sim in path_to_mean_sim.items():
+        track = tracks.get(rel_path)
         if track is None:
             continue
         # legacy track without stored windows falls back to mean cos
-        scored.append((track, scores.get(cand.rel_path, cand.mean_sim)))
+        scored.append((track, scores.get(rel_path, mean_sim)))
 
-    def by_score(entry: tuple[TrackRow[D], float]) -> float:
+    def by_score(entry: tuple[TrackData[D], float]) -> float:
         return entry[1]
 
     scored.sort(key=by_score, reverse=True)
     return scored[:k]
-
-
-def rank_by_similarity(
-    store: Store, seed_vec: np.ndarray[[D]], *, k: int, exclude: set[str] | None = None, alpha: float = PEAK_WEIGHT
-) -> list[tuple[TrackRow[D], float]]:
-    """Same two-stage path, driven by a seed track vector instead of a text query."""
-    return rank_hybrid(store, seed_vec, k=k, exclude=exclude, alpha=alpha)

@@ -8,9 +8,10 @@ import argparse
 from pathlib import Path
 
 import numpy as np
+from shape_extensions import IntVar
 
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
-from local_smart_playlist.index.store import Store, TrackMeta
+from local_smart_playlist.index.store import Store, TrackData
 from local_smart_playlist.query.contrast import baseline_vector, query_vector_contrast
 from local_smart_playlist.query.prompts import caption_vocab
 from local_smart_playlist.query.vocab_cal import (
@@ -27,7 +28,7 @@ PROBES: dict[str, list[str]] = {
 PREVIEW_COUNT = 8
 
 
-def _matches(track: TrackMeta, needle: str) -> bool:
+def _matches[D: IntVar](track: TrackData[D], needle: str) -> bool:
     needle_l = needle.lower()
     return needle_l in track.rel_path.lower() or needle_l in track.title.lower()
 

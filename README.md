@@ -48,7 +48,10 @@ alpha * max cos(query, window) + (1-alpha) * cos(query, track mean);
 `--alpha` tunes peak-mood vs whole-track mood (default 0.7).
 
 Index DB defaults to `.sp-index/index.db` relative to the current working
-directory; override with `--db`.
+directory; override with `--db`. After `sp play` closes its DB connection, it
+starts a detached `VACUUM` worker when free pages exceed both 50 MiB and 25%
+of DB size. Worker output goes to `<db path>.vacuum.log`; SQLite reuses free
+pages when vacuum threshold is not met.
 
 LLM query adaptation (`--llm`) uses any OpenAI-compatible endpoint. For free
 text, it generates distinct MuQ-MuLan-style attribute-query variants using

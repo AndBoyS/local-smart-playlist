@@ -1,8 +1,10 @@
 """`sp play` command."""
 
+import logging
 from collections import defaultdict
 from pathlib import Path
 
+from local_smart_playlist.commands import vacuum_worker
 from local_smart_playlist.config import default_db_path, default_playlist_dir
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
 from local_smart_playlist.index.store import Store, TrackMeta
@@ -15,6 +17,8 @@ from local_smart_playlist.query.vocab_cal import (
     rank_by_vocab_calibration,
     vocab_vector_bank_cached,
 )
+
+logger = logging.getLogger(__name__)
 
 PREVIEW_COUNT = 10
 PLAY_DEFAULT_ALPHA = 0.7  # peak-window weight default for --seed-track ranking
@@ -57,6 +61,7 @@ class PlayArgs:
             raise SystemExit(f"no index at {db_path}; run `sp index` first")
 
         library_root: str | None = None
+        vacuum_recommended = False
         with Store(db_path) as store:
             library_root = store.get_meta("library_root")
             store.require_model(MODEL_ID)
@@ -93,6 +98,10 @@ class PlayArgs:
                     for variant in adapted
                 ]
                 ranked = merge_query_rankings(per_query_rankings)
+            vacuum_recommended = store.vacuum_if_needed(execute=False).recommended
+
+        if vacuum_recommended and vacuum_worker.start_background(db_path):
+            logger.info("started background index vacuum; details: %s", f"{db_path}.vacuum.log")
 
         cutoff = max(VOCAB_SCORE_FLOOR, min_score)
         if len(ranked) > 0:

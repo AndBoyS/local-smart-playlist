@@ -18,6 +18,18 @@ W = IntVar("W")  # window count per track
 T = IntVar("T")  # total windows across fetched tracks
 
 SCHEMA_VERSION = "3"
+MIN_VACUUM_FREE_BYTES = 50 * 1024 * 1024
+MIN_VACUUM_FREE_FRACTION = 0.25
+
+
+def should_vacuum(*, free_bytes: int, total_bytes: int) -> bool:
+    """Vacuum only when free space is both substantial and a large share of the DB."""
+    return (
+        total_bytes > 0
+        and free_bytes >= MIN_VACUUM_FREE_BYTES
+        and free_bytes / total_bytes >= MIN_VACUUM_FREE_FRACTION
+    )
+
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -95,6 +107,17 @@ class KnnHit:
     rel_path: str
     title: str
     distance: float
+
+
+@dataclass(frozen=True)
+class VacuumResult:
+    """Threshold decision and database sizes before/after optional compaction."""
+
+    recommended: bool
+    performed: bool
+    free_before_bytes: int
+    size_before_bytes: int
+    size_after_bytes: int
 
 
 class Store:
@@ -335,6 +358,45 @@ class Store:
         return len(stale) + len(fstale)
 
     # -- stats -------------------------------------------------------------
+
+    def vacuum_if_needed(self, *, execute: bool) -> VacuumResult:
+        """Check free-page thresholds, optionally compact, and report DB sizes."""
+        page_size_row = self._conn.execute("PRAGMA page_size").fetchone()
+        page_count_row = self._conn.execute("PRAGMA page_count").fetchone()
+        freelist_row = self._conn.execute("PRAGMA freelist_count").fetchone()
+        assert page_size_row is not None
+        page_size = page_size_row[0]
+        assert isinstance(page_size, int)
+        assert page_count_row is not None
+        page_count = page_count_row[0]
+        assert isinstance(page_count, int)
+        assert freelist_row is not None
+        freelist_count = freelist_row[0]
+        assert isinstance(freelist_count, int)
+        free_before = freelist_count * page_size
+        size_before = page_count * page_size
+        recommended = should_vacuum(free_bytes=free_before, total_bytes=size_before)
+        if not recommended or not execute:
+            return VacuumResult(
+                recommended=recommended,
+                performed=False,
+                free_before_bytes=free_before,
+                size_before_bytes=size_before,
+                size_after_bytes=size_before,
+            )
+
+        _ = self._conn.execute("VACUUM")
+        after_page_count = self._conn.execute("PRAGMA page_count").fetchone()
+        assert after_page_count is not None
+        assert isinstance(after_page_count[0], int)
+        size_after = after_page_count[0] * page_size
+        return VacuumResult(
+            recommended=recommended,
+            performed=True,
+            free_before_bytes=free_before,
+            size_before_bytes=size_before,
+            size_after_bytes=size_after,
+        )
 
     def track_count(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) FROM tracks").fetchone()

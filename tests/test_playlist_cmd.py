@@ -30,6 +30,47 @@ def test_merge_query_rankings_keeps_unique_tracks_and_best_score() -> None:
     ]
 
 
+def test_play_starts_vacuum_after_closing_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    db = tmp_path / "index.db"
+    db.touch()
+    store = MagicMock()
+    store.__enter__.return_value = store
+    store.get_meta.return_value = str(tmp_path)
+    store.get_track.return_value = MagicMock(rel_path="seed.mp3", mean_vec=object())
+    store.track_count.return_value = 1
+    store.vacuum_if_needed.return_value.recommended = True
+    track = TrackMeta(rel_path="result.mp3", title="result", duration=60.0)
+
+    monkeypatch.setattr(playlist_cmd, "cap_torch_threads", lambda: None)
+
+    def make_store(_db: Path) -> MagicMock:
+        return store
+
+    def fake_rank(*_args: object, **_kwargs: object) -> list[tuple[TrackMeta, float]]:
+        return [(track, 0.95)]
+
+    monkeypatch.setattr(playlist_cmd, "Store", make_store)
+    monkeypatch.setattr(playlist_cmd, "rank_by_similarity", fake_rank)
+
+    def start_background(_db_path: Path) -> bool:
+        assert store.__exit__.called
+        return True
+
+    monkeypatch.setattr(playlist_cmd.vacuum_worker, "start_background", start_background)
+    playlist_cmd.PlayArgs.run(
+        query="seed",
+        db=db,
+        n=1,
+        out=None,
+        llm=False,
+        seed_track="seed.mp3",
+        alpha=playlist_cmd.PLAY_DEFAULT_ALPHA,
+        min_score=0.9,
+        dry=True,
+    )
+    store.vacuum_if_needed.assert_called_once_with(execute=False)
+
+
 def test_play_crashes_when_llm_adaptation_fails(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     db = tmp_path / "index.db"
     db.touch()

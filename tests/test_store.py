@@ -199,7 +199,7 @@ def test_load_windows_flat_layout(tmp_path: Path) -> None:
             window_vecs=np.stack([basis_vec(i), basis_vec(i + 3)]),
         )
 
-    flat = store.load_windows_batched(["a.mp3", "b.mp3", "missing.mp3"])
+    flat = store.load_windows_flat(["a.mp3", "b.mp3", "missing.mp3"])
     assert flat.rel_paths == ["a.mp3", "b.mp3"]
     assert flat.window_sizes == [2, 2]
     assert flat.vec_matrix.shape == (4, DIM)
@@ -207,7 +207,7 @@ def test_load_windows_flat_layout(tmp_path: Path) -> None:
     assert np.allclose(flat.vec_matrix[2:], np.stack([basis_vec(1), basis_vec(4)]))
 
     # empty candidate set
-    empty = store.load_windows_batched([])
+    empty = store.load_windows_flat([])
     assert empty.rel_paths == []
     assert empty.vec_matrix.shape == (0, DIM)
     assert empty.window_sizes == []
@@ -222,7 +222,7 @@ def test_load_windows_flat_layout(tmp_path: Path) -> None:
         model="test",
         indexed_at="now",
     )
-    legacy = store.load_windows_batched(["legacy.mp3"])
+    legacy = store.load_windows_flat(["legacy.mp3"])
     assert legacy.rel_paths == []
     assert legacy.vec_matrix.shape == (0, DIM)
     assert legacy.window_sizes == []

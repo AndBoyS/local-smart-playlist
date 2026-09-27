@@ -161,11 +161,11 @@ def test_percentile_counts_captions_beaten() -> None:
     bank = _vocab_vecs({"cap a": 0, "cap b": 1, "cap c": 2, "cap d": 3})
     margin_vec = basis(1)
     # window == query direction: sims_v = [1, 0, 0, 0], sim_q = 1 -> beaten 3/4
-    on = vocab_calibration_score(np.stack([basis(0)]), query_vec=q, vocab_vecs=bank, margin_vec=margin_vec)
+    on = vocab_calibration_score(np.stack([basis(0)]), query_vec=q, vocab_vecs=bank, margin_vec=margin_vec)[0]
     assert on.score == pytest.approx(0.75, abs=1e-6)
     assert on.coverage == pytest.approx(1.0)  # 0.75 > 0.5
     # off-mood but vocab-covered window: sim_q = 0, sims_v = [0, 1, 0, 0] -> beaten 0/4
-    off = vocab_calibration_score(np.stack([basis(1)]), query_vec=q, vocab_vecs=bank, margin_vec=basis(5))
+    off = vocab_calibration_score(np.stack([basis(1)]), query_vec=q, vocab_vecs=bank, margin_vec=basis(5))[0]
     assert off.score == pytest.approx(0.0, abs=1e-6)
 
 
@@ -173,7 +173,9 @@ def test_score_averages_window_percentiles() -> None:
     """Two windows: one at 0.75, one at 0.0 -> track score 0.375, coverage 0.5."""
     q = basis(0)
     bank = _vocab_vecs({"cap a": 0, "cap b": 1, "cap c": 2, "cap d": 3})
-    result = vocab_calibration_score(np.stack([basis(0), basis(1)]), query_vec=q, vocab_vecs=bank, margin_vec=basis(5))
+    result = vocab_calibration_score(np.stack([basis(0), basis(1)]), query_vec=q, vocab_vecs=bank, margin_vec=basis(5))[
+        0
+    ]
     assert result.score == pytest.approx(0.375, abs=1e-6)
     assert result.coverage == pytest.approx(0.5)
 
@@ -185,7 +187,9 @@ def test_guard_falls_back_to_margin_sigmoid() -> None:
     bank = _vocab_vecs({"cap a": 1, "cap b": 2, "cap c": 3, "cap d": 4})
     margin_vec = basis(5)
     # margin = cos(w, q) - cos(w, margin_vec) = 1.0 -> sigmoid(20) ~ 1
-    hot = vocab_calibration_score(np.stack([np.asarray(basis(0))]), query_vec=q, vocab_vecs=bank, margin_vec=margin_vec)
+    hot = vocab_calibration_score(
+        np.stack([np.asarray(basis(0))]), query_vec=q, vocab_vecs=bank, margin_vec=margin_vec
+    )[0]
     expected_hot = float(1.0 / (1.0 + np.exp(-1.0 / MARGIN_TAU)))  # pyrefly: ignore[unknown-argument-type]
     assert hot.score == pytest.approx(expected_hot, abs=1e-6)
     assert hot.coverage == pytest.approx(1.0)
@@ -195,7 +199,7 @@ def test_guard_falls_back_to_margin_sigmoid() -> None:
         query_vec=q,
         vocab_vecs=bank,
         margin_vec=margin_vec,
-    )
+    )[0]
     # cos(w, q) = cos(w, margin) = 1/sqrt(2) -> margin 0
     assert neutral.score == pytest.approx(0.5, abs=1e-6)
 
@@ -215,6 +219,44 @@ def test_rank_orders_by_calibration_and_breaks_ties() -> None:
     assert [t.rel_path for t, _ in ranked] == ["a-steady.mp3", "b-steady.mp3", "peaky.mp3"]
     assert ranked[0][1] == pytest.approx(ranked[1][1], abs=1e-6)
     assert ranked[2][1] == pytest.approx(0.1875, abs=1e-6)
+
+
+def test_batched_rank_matches_per_track_reference(monkeypatch: pytest.MonkeyPatch) -> None:
+    from local_smart_playlist.query import vocab_cal
+
+    monkeypatch.setattr(vocab_cal, "CALIBRATION_BATCH_TRACKS", 3)
+    q = basis(0)
+    bank = _vocab_vecs({"cap a": 0, "cap b": 1, "cap c": 2, "cap d": 3})
+    margin = basis(1)
+    half = (basis(0) + basis(1)) / np.sqrt(2.0)
+    guard_hot = (0.29 * basis(0) - 0.95 * basis(1)).astype(np.float32)
+    guard_hot /= np.linalg.norm(guard_hot)
+    tracks = {
+        "a-normal.mp3": np.stack([basis(0), basis(0)]),
+        "b-half-percentile.mp3": np.stack([half, half]),
+        "c-guard-neutral.mp3": np.stack([basis(4), basis(5)]),
+        "d-guard-hot.mp3": np.stack([guard_hot]),
+    }
+    store = Store(Path(":memory:"), embed_dim=DIM)
+    for path, vectors in tracks.items():
+        upsert_track(store, path, vectors)
+
+    expected: list[tuple[str, float, float]] = []
+    for path, vectors in tracks.items():
+        result = vocab_calibration_score(
+            vectors,
+            query_vec=q,
+            vocab_vecs=bank,
+            margin_vec=margin,
+            track_sizes=NonEmptyTuple((len(vectors),)),
+        )[0]
+        expected.append((path, result.score, result.coverage))
+    expected.sort(key=lambda item: (-item[1], -item[2], item[0]))
+
+    ranked = rank_by_vocab_calibration(store, query_vec=q, vocab_vecs=bank, margin_vec=margin, k=len(tracks))
+    assert [track.rel_path for track, _ in ranked] == [path for path, _, _ in expected]
+    for (_track, score), (_path, expected_score, _coverage) in zip(ranked, expected, strict=True):
+        assert score == pytest.approx(expected_score, abs=1e-6)
 
 
 def test_rank_respects_k_and_exclude() -> None:

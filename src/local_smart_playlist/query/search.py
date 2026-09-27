@@ -79,7 +79,7 @@ def rank_by_similarity(
     path_to_mean_sim = {paths[int(i.item())]: float(sims[i]) for i in order}
 
     cand_paths = [rel_path for rel_path in path_to_mean_sim if rel_path not in excluded]
-    flat = store.load_windows_batched(cand_paths)
+    flat = store.load_windows_flat(cand_paths)
     scores = _rescore_flat(
         paths=flat.rel_paths,
         big=flat.vec_matrix,

@@ -31,12 +31,14 @@ from dataclasses import dataclass
 import numpy as np
 from shape_extensions import IntVar
 
+from local_smart_playlist.audio.features import batches
 from local_smart_playlist.embed.model import MODEL_ID, MuLanEmbedder
 from local_smart_playlist.index.store import MetaKey, Store, TrackData
 from local_smart_playlist.numpy_helpers import l2_normalize, reshape
 from local_smart_playlist.type_utils import NonEmptyTuple
 
-W = IntVar("W")  # window count
+W = IntVar("W")  # window count per track
+N = IntVar("N")  # total window count in a flat scoring batch
 D = IntVar("D")  # embedding dim
 V = IntVar("V")  # vocab size
 
@@ -48,6 +50,7 @@ VOCAB_SCORE_FLOOR = 0.5
 # Tracks below this best-vocab-sim have uninformative profiles; measured
 # library p1 is 0.294 (see difficulties.md §7).
 VOCAB_COVER_FLOOR = 0.30
+CALIBRATION_BATCH_TRACKS = 256
 # Sigmoid temperature for the margin fallback; +0.10 margin → ~0.73.
 MARGIN_TAU = 0.05
 # Neutral point shared by percentile space (query beats half the captions)
@@ -116,34 +119,44 @@ class VocabCalScore:
 
 
 def vocab_calibration_score(
-    window_vecs: np.ndarray[[W, D]],
+    flat_vecs: np.ndarray[[N, D]],
     *,
+    track_sizes: NonEmptyTuple[int] | None = None,
     query_vec: np.ndarray[[D]],
     vocab_vecs: np.ndarray[[V, D]],
     margin_vec: np.ndarray[[D]],
-) -> VocabCalScore:
-    """Percentile of the query affinity within each window's vocab profile.
+) -> list[VocabCalScore]:
+    """Score a flat batch of tracks; ``track_sizes`` partitions its windows.
 
-    Score = mean over windows of (share of vocab captions the query beats),
-    or, when the track's best vocab affinity is below ``VOCAB_COVER_FLOOR``,
-    a sigmoid of the mean 20-anchor margin (fallback for uninformative
-    profiles). Coverage = share of windows above the 0.5 neutral point.
+    Omit ``track_sizes`` to treat all rows as one track. Otherwise, sizes must
+    be positive and sum to the number of rows in ``window_vecs``.
     """
-    sims_q = (window_vecs @ query_vec).astype(np.float64)
-    sims_v = (window_vecs @ vocab_vecs.T).astype(np.float64)
-    best_vocab = float(sims_v.max())
-    if best_vocab < VOCAB_COVER_FLOOR:
-        sims_m = (window_vecs @ margin_vec).astype(np.float64)
-        margins: np.ndarray[[W, 1]] = sims_q[:, None] - sims_m[:, None]
-        z = margins.mean() / MARGIN_TAU
-        score = float(1.0 / (1.0 + np.exp(-z)))
-        coverage = float(np.greater(margins, 0.0).mean())
-    else:
-        beaten = np.greater(sims_q[:, None], sims_v)
-        percentiles: np.ndarray[[W, 1]] = beaten.mean(axis=1)[:, None]
-        score = float(percentiles.mean())
-        coverage = float(np.greater(percentiles, NEUTRAL).mean())
-    return VocabCalScore(score=score, coverage=coverage)
+    sizes: list[int] = [int(flat_vecs.shape[0])] if track_sizes is None else list(track_sizes)
+    if any(size <= 0 for size in sizes) or sum(sizes) != int(flat_vecs.shape[0]):
+        raise ValueError("track_sizes must partition window_vecs into positive track sizes")
+
+    sims_q = (flat_vecs @ query_vec).astype(np.float64)
+    sims_v = (flat_vecs @ vocab_vecs.T).astype(np.float64)
+    scores: list[VocabCalScore] = []
+    start = 0
+    for size in sizes:
+        end = start + size
+        track_sims_q = sims_q[start:end]
+        track_sims_v = sims_v[start:end]
+        if float(track_sims_v.max()) < VOCAB_COVER_FLOOR:
+            sims_m = (flat_vecs[start:end] @ margin_vec).astype(np.float64)
+            margins = track_sims_q - sims_m
+            z = margins.mean() / MARGIN_TAU
+            score = float(1.0 / (1.0 + np.exp(-z)))
+            coverage = float(np.greater(margins, 0.0).mean())
+        else:
+            beaten = np.greater(track_sims_q[:, None], track_sims_v)
+            percentiles = beaten.mean(axis=1)
+            score = float(percentiles.mean())
+            coverage = float(np.greater(percentiles, NEUTRAL).mean())
+        scores.append(VocabCalScore(score=score, coverage=coverage))
+        start = end
+    return scores
 
 
 def rank_by_vocab_calibration(
@@ -162,17 +175,34 @@ def rank_by_vocab_calibration(
     per-window percentile (or fallback sigmoid margin for guard tracks).
     """
     excluded = set() if exclude is None else set(exclude)
-    windows = store.load_windows(store.track_rel_paths())
+    flat_vecs = store.load_windows_flat(store.track_rel_paths())
 
+    path_data = {track.rel_path: track for track in store.track_meta()}
     scored: list[tuple[TrackData[D], float, float, str]] = []
-    for track in store.track_meta():
-        if track.rel_path in excluded:
-            continue
-        window_vecs = windows.get(track.rel_path)
-        if window_vecs is None or window_vecs.shape[0] == 0:
-            continue  # track without stored windows must be re-indexed
-        result = vocab_calibration_score(window_vecs, query_vec=query_vec, vocab_vecs=vocab_vecs, margin_vec=margin_vec)
-        scored.append((track, result.score, result.coverage, track.rel_path))
+    batch_start = 0
+    flat_id_start = 0
+
+    if len(flat_vecs.rel_paths) == 0:
+        return []
+
+    paths = NonEmptyTuple(flat_vecs.rel_paths)
+    for paths_batch in batches(paths, batch_size=CALIBRATION_BATCH_TRACKS):
+        batch_end = batch_start + len(paths_batch)
+        sizes_batch = NonEmptyTuple(flat_vecs.window_sizes[batch_start:batch_end])
+        flat_id_end = flat_id_start + sum(sizes_batch)
+        batch_scores = vocab_calibration_score(
+            flat_vecs.vec_matrix[flat_id_start:flat_id_end],
+            track_sizes=sizes_batch,
+            query_vec=query_vec,
+            vocab_vecs=vocab_vecs,
+            margin_vec=margin_vec,
+        )
+        for path, result in zip(paths_batch, batch_scores, strict=True):
+            track = path_data.get(path)
+            if path not in excluded and track is not None:
+                scored.append((track, result.score, result.coverage, path))
+        batch_start = batch_end
+        flat_id_start = flat_id_end
 
     scored.sort(key=lambda entry: (-entry[1], -entry[2], entry[3]))
     return [(track, score) for track, score, _coverage, _rel in scored[:k]]

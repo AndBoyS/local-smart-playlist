@@ -247,7 +247,7 @@ class Store:
                 session.add(EmbedOrm(rel_path=rel_path, vec=serialize_vec(window_vecs)))
             _ = session.execute(delete(FailureOrm).where(FailureOrm.rel_path == rel_path))
 
-    def load_windows_batched(self, rel_paths: Iterable[str]) -> BatchedVectors[T, D]:
+    def load_windows_flat(self, rel_paths: Iterable[str]) -> BatchedVectors[T, D]:
         """All windows as one contiguous [total_windows, dim] matrix, row-major.
 
         Returns rel_paths, vec_matrix, and per-track window_sizes;
@@ -293,7 +293,7 @@ class Store:
 
     def load_windows(self, rel_paths: Iterable[str]) -> dict[str, np.ndarray[[W, D]]]:
         """All window vectors grouped by rel_path, in window order."""
-        batch = self.load_windows_batched(rel_paths)
+        batch = self.load_windows_flat(rel_paths)
         if len(batch.rel_paths) == 0:
             return {}
         starts: list[int] = np.cumsum([0, *batch.window_sizes[:-1]]).tolist()

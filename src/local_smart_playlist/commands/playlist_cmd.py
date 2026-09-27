@@ -85,13 +85,13 @@ class PlayArgs:
                 )
             else:
                 if alpha != PLAY_DEFAULT_ALPHA:
-                    print("note: --alpha ignored (applies only with --seed-track)")  # noqa: T201 — CLI output
+                    print("note: --alpha ignored (applies only with --seed-track)")
                 adapted = [query]
                 if llm:
                     adapted = adapt_mood(query)
-                    print("LLM queries:")  # noqa: T201 — CLI output
+                    print("LLM queries:")
                     for variant in adapted:
-                        print(f"  - {variant}")  # noqa: T201 — CLI output
+                        print(f"  - {variant}")
                 model = load_model(device="cpu", text_only=True)
                 bvec = baseline_vector(model)
                 vocab_vecs = vocab_vector_bank_cached(store, model, vocab=caption_vocab())
@@ -133,7 +133,7 @@ class PlayArgs:
 
         if dry is True or out == "-":
             for _path, title, duration, score in entries:
-                print(f"{score:6.3f}  {duration:7.1f}s  {title}")  # noqa: T201 — CLI output
+                print(f"{score:6.3f}  {duration:7.1f}s  {title}")
             return
 
         out_path = Path(out) if out is not None else playlist_path(query, default_playlist_dir(root))
@@ -142,8 +142,8 @@ class PlayArgs:
             root=root,
             out_path=out_path,
         )
-        print(f"wrote {len(entries)} tracks -> {out_path}")  # noqa: T201 — CLI output
+        print(f"wrote {len(entries)} tracks -> {out_path}")
         for _path, title, _dur, score in entries[:PREVIEW_COUNT]:
-            print(f"  {score:6.3f}  {title}")  # noqa: T201 — CLI output
+            print(f"  {score:6.3f}  {title}")
         if len(entries) > PREVIEW_COUNT:
-            print(f"  ... +{len(entries) - PREVIEW_COUNT} more")  # noqa: T201 — CLI output
+            print(f"  ... +{len(entries) - PREVIEW_COUNT} more")

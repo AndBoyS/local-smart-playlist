@@ -101,7 +101,7 @@ def adapt_mood(mood: str) -> list[str]:
         payload = resp.json()
         content = payload["choices"][0]["message"]["content"]
         assert isinstance(content, str)
-    except Exception as exc:  # noqa: BLE001 — surface any endpoint failure as LlmError
+    except Exception as exc:
         logger.warning("llm adapt failed for %r via %s/%s: %s", mood, base_url, model, exc)
         msg = f"LLM adaptation failed: {exc}"
         raise LlmError(msg) from exc

@@ -43,7 +43,7 @@ def render_m3u8(tracks: list[tuple[str, str, float]], *, root: Path, out_path: P
 
 
 def write_playlist(tracks: list[tuple[str, str, float]], *, root: Path, out_path: Path) -> None:
-    out_path.parent.mkdir(parents=True, exist_ok=True)  # noqa: PTH110
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     _ = out_path.write_text(render_m3u8(tracks, root=root, out_path=out_path), encoding="utf-8")
 
 

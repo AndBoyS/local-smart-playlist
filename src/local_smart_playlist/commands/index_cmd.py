@@ -28,7 +28,7 @@ class IndexArgs:
     def run(*, root: Path, db: Path | None, rescan: bool, quiet: bool) -> None:
         cap_torch_threads()
         db_path = db if db is not None else default_db_path()
-        db_path.parent.mkdir(parents=True, exist_ok=True)  # noqa: PTH110
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         root = root.expanduser().resolve()
         if not root.is_dir():
             raise SystemExit(f"not a directory: {root}")
@@ -81,11 +81,11 @@ class IndexArgs:
                         )
                     except decode.DecodeError as exc:
                         store.record_failure(rel_path=rel, error=str(exc), now=now)
-                    except Exception as exc:  # noqa: BLE001 — one bad track must not abort a full index run
+                    except Exception as exc:
                         store.record_failure(rel_path=rel, error=str(exc), now=now)
                     _ = bar.advance(task, 1)
             _ = store.prune_missing({relative_posix(root, p) for p in files})
 
             indexed = store.track_count()
             failed = store.failure_count()
-            print(f"indexed {indexed}/{len(files)} tracks, {failed} failures -> {db_path}")  # noqa: T201 — CLI output
+            print(f"indexed {indexed}/{len(files)} tracks, {failed} failures -> {db_path}")

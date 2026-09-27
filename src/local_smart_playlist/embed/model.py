@@ -251,7 +251,7 @@ def _from_hub() -> nn.Module:
 
     try:
         return MuQMuLan.from_pretrained(MODEL_ID, local_files_only=True).eval()
-    except Exception:  # noqa: BLE001 — incomplete cache: fall back to the online download path
+    except Exception:
         _ = os.environ.pop("HF_HUB_OFFLINE", None)
         return MuQMuLan.from_pretrained(MODEL_ID).eval()
 

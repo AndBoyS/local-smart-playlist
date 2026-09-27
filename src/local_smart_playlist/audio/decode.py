@@ -71,14 +71,14 @@ def _decode_torchaudio(path: Path) -> tuple[np.ndarray[[S, C]], int]:
         tensor, sr = torchaudio.load(path)
         arr = tensor.numpy()
         return arr.T.astype(np.float32), sr
-    except Exception:  # noqa: BLE001 — any torchaudio failure falls through to CLI
+    except Exception:
         return _decode_ffmpeg_cli(path)
 
 
 def _decode_ffmpeg_cli(path: Path) -> tuple[np.ndarray[[S, C]], int]:
     """Decode to mono f32le via the ffmpeg binary (last resort)."""
     try:
-        proc = subprocess.run(  # noqa: S603 — fixed argv
+        proc = subprocess.run(
             [
                 "ffmpeg",
                 "-nostdin",

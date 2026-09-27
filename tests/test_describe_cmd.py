@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     import torch
 from local_smart_playlist.index.store import MetaKey, Store
 from local_smart_playlist.query import prompts
+from local_smart_playlist.type_utils import NonEmptyTuple
 
 DIM = 8
 
@@ -80,15 +81,15 @@ def test_rank_captions_orders_by_similarity() -> None:
     vocab = ["caption C", "caption B", "caption A"]
     mean = basis(0) + 0.5 * basis(1)
     mean = (mean / float(np.linalg.norm(mean))).astype(np.float32)
-    ranked = describe_cmd.rank_captions(fake_embedder(), mean_vec=mean, vocab=vocab, top_n=2)
+    ranked = describe_cmd.rank_captions(fake_embedder(), mean_vec=mean, vocab=NonEmptyTuple(vocab), top_n=2)
     assert ranked[0] == ("caption A", pytest.approx(0.8944, abs=1e-3))
     assert ranked[1][0] == "caption B"
 
 
 def test_rank_captions_respects_top_n() -> None:
     vocab = ["caption A", "caption B"]
-    ranked = describe_cmd.rank_captions(fake_embedder(), mean_vec=basis(1), vocab=vocab, top_n=1)
-    assert ranked == [("caption B", 1.0)]
+    ranked = describe_cmd.rank_captions(fake_embedder(), mean_vec=basis(1), vocab=NonEmptyTuple(vocab), top_n=1)
+    assert ranked == (("caption B", 1.0),)
 
 
 def test_resolve_rel_path_absolute_inside_root(tmp_path: Path) -> None:
@@ -105,6 +106,12 @@ def test_resolve_rel_path_cwd_relative(monkeypatch: Any, tmp_path: Path) -> None
 def test_resolve_rel_path_already_relative_falls_back(tmp_path: Path) -> None:
     rel = describe_cmd.resolve_rel_path("a/song.flac", tmp_path / "other-root")
     assert rel == "a/song.flac"
+
+
+@pytest.mark.parametrize("n", [0, -1])
+def test_run_rejects_non_positive_caption_count(n: int) -> None:
+    with pytest.raises(SystemExit, match="number of captions must be positive"):
+        describe_cmd.DescribeArgs.run(path="x.flac", db=None, n=n)
 
 
 def test_run_missing_index(tmp_path: Path) -> None:
@@ -143,7 +150,7 @@ def test_run_describes_track(monkeypatch: Any, tmp_path: Path, capsys: Any) -> N
         store.set_meta(MetaKey.LIBRARY_ROOT, str(root))
         upsert_track(store, "song.flac", basis(0))
 
-    monkeypatch.setattr(prompts, "caption_vocab", lambda: ["caption A", "caption B"])
+    monkeypatch.setattr(prompts, "caption_vocab", lambda: NonEmptyTuple(("caption A", "caption B")))
     describe_cmd.DescribeArgs.run(path=str(root / "song.flac"), db=db, n=2)
     out = capsys.readouterr().out
     assert "song.flac" in out

@@ -12,6 +12,7 @@ from local_smart_playlist.config import default_db_path
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
 from local_smart_playlist.index.store import Store
 from local_smart_playlist.query import prompts
+from local_smart_playlist.type_utils import NonEmptyTuple
 
 WORST_COUNT = 20
 
@@ -19,7 +20,9 @@ WORST_COUNT = 20
 def main() -> None:
     cap_torch_threads()
     vocab = prompts.caption_vocab()
-    vocab_vecs = np.asarray(load_model().embed_texts(vocab), dtype=np.float32)  # (V, D)
+    if len(vocab) == 0:
+        raise RuntimeError("caption vocabulary is empty")
+    vocab_vecs = np.asarray(load_model().embed_texts(NonEmptyTuple(vocab)), dtype=np.float32)  # (V, D)
     with Store(default_db_path()) as store:
         store.require_model(MODEL_ID)
         rows = store.all_track_means()

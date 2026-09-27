@@ -8,6 +8,7 @@ import pytest
 
 from local_smart_playlist.commands import index_cmd
 from local_smart_playlist.index.store import Store
+from local_smart_playlist.type_utils import NonEmptyTuple
 
 DIM = 512  # Store's default embed_dim; fake embedder must match
 
@@ -15,7 +16,7 @@ DIM = 512  # Store's default embed_dim; fake embedder must match
 class _FakeEmbedder:
     """MuLanEmbedder stand-in: embed_windows -> ones/DIM rows."""
 
-    def embed_windows(self, windows: list[np.ndarray], *, batch_size: int = 16) -> np.ndarray:
+    def embed_windows(self, windows: NonEmptyTuple[np.ndarray], *, batch_size: int = 16) -> np.ndarray:
         return np.ones((len(windows), DIM), dtype=np.float32) / DIM
 
 

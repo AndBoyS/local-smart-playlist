@@ -34,6 +34,7 @@ from shape_extensions import IntVar
 from local_smart_playlist.embed.model import MODEL_ID, MuLanEmbedder
 from local_smart_playlist.index.store import MetaKey, Store, TrackData
 from local_smart_playlist.numpy_helpers import l2_normalize, reshape
+from local_smart_playlist.type_utils import NonEmptyTuple
 
 W = IntVar("W")  # window count
 D = IntVar("D")  # embedding dim
@@ -54,17 +55,17 @@ MARGIN_TAU = 0.05
 NEUTRAL = 0.5
 
 
-def vocab_vector_bank(model: MuLanEmbedder[D], vocab: list[str]) -> np.ndarray[[V, D]]:
+def vocab_vector_bank(model: MuLanEmbedder[D], vocab: NonEmptyTuple[str]) -> np.ndarray[[V, D]]:
     """Unit-norm embeddings of the caption vocabulary, one row per caption."""
-    vecs = np.asarray(model.embed_texts(vocab), dtype=np.float32)
-    return l2_normalize(vecs)
+    embeds = model.embed_texts(vocab)
+    return l2_normalize(embeds)
 
 
 _CACHE_FORMAT = "v1"
 _CACHE_PART_COUNT = 4
 
 
-def _vocab_digest(vocab: list[str]) -> str:
+def _vocab_digest(vocab: NonEmptyTuple[str]) -> str:
     """Digest vocabulary text for cache validation."""
     return hashlib.sha1("\n".join(vocab).encode("utf-8")).hexdigest()
 
@@ -78,12 +79,7 @@ def _encode_bank(vecs: np.ndarray[[V, D]], *, vocab_digest: str) -> str:
 def _decode_bank(*, blob: str, dim: int, n: int, vocab_digest: str) -> np.ndarray[[V, D]] | None:
     """Decode cache value; return None when identity, encoding, or shape mismatches."""
     parts = blob.split("\n", maxsplit=3)
-    if (
-        len(parts) != _CACHE_PART_COUNT
-        or parts[0] != _CACHE_FORMAT
-        or parts[1] != MODEL_ID
-        or parts[2] != vocab_digest
-    ):
+    if len(parts) != _CACHE_PART_COUNT or parts[0] != _CACHE_FORMAT or parts[1] != MODEL_ID or parts[2] != vocab_digest:
         return None
     try:
         arr = np.frombuffer(base64.b64decode(parts[3], validate=True), dtype=np.float32)
@@ -94,7 +90,7 @@ def _decode_bank(*, blob: str, dim: int, n: int, vocab_digest: str) -> np.ndarra
     return reshape(arr, (n, dim))
 
 
-def vocab_vector_bank_cached(store: Store, model: MuLanEmbedder[D], *, vocab: list[str]) -> np.ndarray[[V, D]]:
+def vocab_vector_bank_cached(store: Store, model: MuLanEmbedder[D], *, vocab: NonEmptyTuple[str]) -> np.ndarray[[V, D]]:
     """Unit-norm vocab embeddings, cached under one fixed metadata key.
 
     Cache value includes format, model, and vocabulary digest; changes silently

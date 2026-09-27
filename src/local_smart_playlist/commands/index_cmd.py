@@ -18,6 +18,7 @@ from local_smart_playlist.embed.aggregate import aggregate
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
 from local_smart_playlist.index.library import discover_audio, display_title, relative_posix
 from local_smart_playlist.index.store import MetaKey, Store
+from local_smart_playlist.type_utils import NonEmptyTuple
 
 
 class IndexArgs:
@@ -64,6 +65,7 @@ class IndexArgs:
                             store.record_failure(rel_path=rel, error="no usable windows (too short or silent)", now=now)
                             _ = bar.advance(task, 1)
                             continue
+                        windows = NonEmptyTuple(windows)
                         window_vecs = model.embed_windows(windows)
                         mean_vec, p90_vec = aggregate(window_vecs)
                         store.upsert(

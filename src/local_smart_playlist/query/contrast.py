@@ -28,6 +28,7 @@ from shape_extensions import IntVar
 from local_smart_playlist.embed.model import MuLanEmbedder
 from local_smart_playlist.index.store import Store, TrackData
 from local_smart_playlist.numpy_helpers import l2_normalize
+from local_smart_playlist.type_utils import NonEmptyTuple
 
 W = IntVar("W")  # window count
 D = IntVar("D")  # embedding dim
@@ -35,31 +36,33 @@ D = IntVar("D")  # embedding dim
 # Broad mood anchors spanning the widest stylistic range the vocab's caption
 # style covers (en + zh). Their mean approximates "music in general"; window
 # affinity to it is subtracted from query affinity.
-MOOD_ANCHORS: list[str] = [
-    "happy mood, major key, bright melody.",
-    "sad mood, slow tempo, minor key.",
-    "calm mood, slow tempo, soft dynamics.",
-    "relaxed mood, mellow groove, warm tone.",
-    "energetic mood, fast tempo, driving drums.",
-    "dark mood, low drones, dissonant textures.",
-    "dreamy mood, reverb pads, hazy atmosphere.",
-    "angry mood, aggressive distorted guitars.",
-    "tense mood, suspenseful pulsing strings.",
-    "nostalgic mood, warm analog synths.",
-    "romantic mood, intimate vocals, slow tempo.",
-    "欢快情绪，明亮旋律。",
-    "悲伤情绪，慢节奏，小调。",
-    "平静情绪，慢节奏，柔和音色。",
-    "充满活力的情绪，快节奏。",
-    "黑暗情绪，低沉氛围。",
-    "梦幻情绪，混响氛围。",
-    "紧张情绪，悬疑氛围。",
-    "怀旧情绪，温暖合成器。",
-    "浪漫情绪，亲密氛围。",
-]
+MOOD_ANCHORS = NonEmptyTuple[str](
+    (
+        "happy mood, major key, bright melody.",
+        "sad mood, slow tempo, minor key.",
+        "calm mood, slow tempo, soft dynamics.",
+        "relaxed mood, mellow groove, warm tone.",
+        "energetic mood, fast tempo, driving drums.",
+        "dark mood, low drones, dissonant textures.",
+        "dreamy mood, reverb pads, hazy atmosphere.",
+        "angry mood, aggressive distorted guitars.",
+        "tense mood, suspenseful pulsing strings.",
+        "nostalgic mood, warm analog synths.",
+        "romantic mood, intimate vocals, slow tempo.",
+        "欢快情绪，明亮旋律。",
+        "悲伤情绪，慢节奏，小调。",
+        "平静情绪，慢节奏，柔和音色。",
+        "充满活力的情绪，快节奏。",
+        "黑暗情绪，低沉氛围。",
+        "梦幻情绪，混响氛围。",
+        "紧张情绪，悬疑氛围。",
+        "怀旧情绪，温暖合成器。",
+        "浪漫情绪，亲密氛围。",
+    )
+)
 
 
-def baseline_vector(model: MuLanEmbedder[D], *, anchors: list[str] | None = None) -> np.ndarray[[D]]:
+def baseline_vector(model: MuLanEmbedder[D], *, anchors: NonEmptyTuple[str] | None = None) -> np.ndarray[[D]]:
     """Unnormalized mean of unit broad-mood anchor embeddings.
 
     Kept unnormalized so ``window @ baseline`` equals the *mean of the
@@ -67,13 +70,16 @@ def baseline_vector(model: MuLanEmbedder[D], *, anchors: list[str] | None = None
     centroid would inflate the baseline by 1/‖centroid‖ (~2–3x for a diverse
     anchor set) and bury gentle textures under the broad baseline.
     """
-    vecs = l2_normalize(model.embed_texts(list(MOOD_ANCHORS if anchors is None else anchors)))
+    prompts = MOOD_ANCHORS if anchors is None else anchors
+    embeddings = model.embed_texts(prompts)
+    vecs = l2_normalize(embeddings)
     return vecs.mean(axis=0)
 
 
 def query_vector_contrast(mood: str, model: MuLanEmbedder[D]) -> np.ndarray[[D]]:
     """Unit embedding of the query text, as written."""
-    vecs = l2_normalize(model.embed_texts([mood]))
+    embeds = model.embed_texts(NonEmptyTuple((mood,)))
+    vecs = l2_normalize(embeds)
     return vecs[0]
 
 

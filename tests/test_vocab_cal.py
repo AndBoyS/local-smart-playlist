@@ -19,9 +19,10 @@ from local_smart_playlist.query.vocab_cal import (
     vocab_vector_bank,
     vocab_vector_bank_cached,
 )
+from local_smart_playlist.type_utils import NonEmptyTuple
 
 DIM = 32
-VOCAB = ["cap a", "cap b", "cap c", "cap d"]
+VOCAB = NonEmptyTuple(("cap a", "cap b", "cap c", "cap d"))
 
 
 def basis(i: int) -> np.ndarray:
@@ -108,7 +109,7 @@ def test_vocab_bank_cache_uses_fixed_meta_key(tmp_path: Path) -> None:
         assert np.array_equal(first, second)
         assert calls == [len(VOCAB)]
 
-        changed_vocab = ["cap b", "cap a", "cap c", "cap d"]
+        changed_vocab = NonEmptyTuple(("cap b", "cap a", "cap c", "cap d"))
         _ = vocab_vector_bank_cached(store, model, vocab=changed_vocab)
         assert calls == [len(VOCAB), len(changed_vocab)]
 
@@ -192,5 +193,5 @@ def test_rank_respects_k_and_exclude() -> None:
 def test_real_embedder_paths_run() -> None:
     """baseline_vector + hashed embedder compose: guard fallback path is reachable."""
     embedder = MuLanEmbedder(_torch_model, dim=DIM)
-    bvec = baseline_vector(embedder, anchors=["x", "y"])
+    bvec = baseline_vector(embedder, anchors=NonEmptyTuple(("x", "y")))
     assert bvec.shape == (DIM,)

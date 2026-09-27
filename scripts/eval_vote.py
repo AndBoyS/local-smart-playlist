@@ -24,6 +24,7 @@ from shape_extensions import IntVar
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
 from local_smart_playlist.index.store import Store, TrackData
 from local_smart_playlist.query.contrast import MOOD_ANCHORS, query_vector_contrast
+from local_smart_playlist.type_utils import NonEmptyTuple
 
 D = IntVar("D")  # embedding dim
 
@@ -144,7 +145,8 @@ def main() -> None:
     with Store(args.db) as store:
         store.require_model(MODEL_ID)
         model = load_model()
-        anchor_vecs = _unit(np.asarray(model.embed_texts(list(MOOD_ANCHORS)), dtype=np.float32))
+        anchor_prompts = NonEmptyTuple(MOOD_ANCHORS)
+        anchor_vecs = _unit(np.asarray(model.embed_texts(anchor_prompts), dtype=np.float32))
         windows_all = store.load_windows(store.track_rel_paths())
         tracks = []
         for rel_path in store.track_rel_paths():

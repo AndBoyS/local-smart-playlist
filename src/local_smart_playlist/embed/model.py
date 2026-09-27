@@ -14,9 +14,11 @@ from torch import nn
 
 from local_smart_playlist.audio.features import batches
 from local_smart_playlist.numpy_helpers import l2_normalize
+from local_smart_playlist.type_utils import NonEmptyTuple
 
 W = IntVar("W")  # samples per window at 48 kHz
 W24 = IntVar("W24")  # samples per window after resample to 24 kHz
+
 
 MODEL_ID = "OpenMuQ/MuQ-MuLan-large"
 EMBED_DIM = 512
@@ -32,9 +34,9 @@ def pick_device() -> str:
     return "cpu"
 
 
-def _to_24k(windows: list[np.ndarray[[W]]]) -> list[np.ndarray[[W24]]]:
+def _to_24k(windows: NonEmptyTuple[np.ndarray[[W]]]) -> NonEmptyTuple[np.ndarray[[W24]]]:
     """Resample 48 kHz windows to the model's 24 kHz input rate (one shot per window)."""
-    return [np.asarray(soxr.resample(w, 48_000, MODEL_SR), dtype=np.float32) for w in windows]
+    return NonEmptyTuple(np.asarray(soxr.resample(w, 48_000, MODEL_SR), dtype=np.float32) for w in windows)
 
 
 class MuLanModel[D: IntVar](Protocol):
@@ -70,10 +72,8 @@ class MuLanEmbedder[D: IntVar]:
         self.model = model
         self.dim = dim
 
-    def embed_texts[N2: IntVar](self, texts: list[str]) -> np.ndarray[[N2, D]]:
-        """Embed text prompts; returns (n_texts, dim), L2-normalized."""
-        if len(texts) == 0:
-            return np.empty((len(texts), self.dim), dtype=np.float32)
+    def embed_texts[N2: IntVar](self, texts: NonEmptyTuple[str]) -> np.ndarray[[N2, D]]:
+        """Embed non-empty text prompts; returns (n_texts, dim), L2-normalized."""
         import torch
 
         with torch.no_grad():
@@ -81,11 +81,9 @@ class MuLanEmbedder[D: IntVar]:
         return l2_normalize(raw)
 
     def embed_windows[W2: IntVar, N2: IntVar](
-        self, windows: list[np.ndarray[[W2]]], *, batch_size: int = 16
+        self, windows: NonEmptyTuple[np.ndarray[[W2]]], *, batch_size: int = 16
     ) -> np.ndarray[[N2, D]]:
-        """Embed disjoint windows; returns (n_windows, dim), L2-normalized."""
-        if len(windows) == 0:
-            return np.empty((len(windows), self.dim), dtype=np.float32)
+        """Embed non-empty disjoint windows; returns (n_windows, dim), L2-normalized."""
         import torch
 
         device = pick_device()

@@ -12,6 +12,7 @@ from local_smart_playlist.embed.model import MODEL_ID, MuLanEmbedder, cap_torch_
 from local_smart_playlist.index.store import MetaKey, Store
 from local_smart_playlist.query import prompts
 from local_smart_playlist.query.phrases import track_documents
+from local_smart_playlist.type_utils import NonEmptyTuple
 
 DEFAULT_TOP_N = 10
 
@@ -32,12 +33,15 @@ def resolve_rel_path(raw: str, root: Path) -> str:
         return Path(raw).expanduser().as_posix()
 
 
-def rank_captions[
-    M: IntVar
-](model: MuLanEmbedder[M], *, mean_vec: np.ndarray[[M]], vocab: list[str], top_n: int) -> list[tuple[str, float]]:
+def rank_captions[M: IntVar](
+    model: MuLanEmbedder[M], *, mean_vec: np.ndarray[[M]], vocab: NonEmptyTuple[str], top_n: int
+) -> NonEmptyTuple[tuple[str, float]]:
     """Top captions by cosine similarity between the unit-norm track mean vector and vocab embeddings."""
-    docs = track_documents(mean_vec, model.embed_texts(vocab), top_n=top_n)
-    return [(vocab[i], sim) for i, sim in docs]
+    if top_n <= 0:
+        raise ValueError("top_n must be positive")
+    embeds = model.embed_texts(vocab)
+    docs = track_documents(mean_vec, embeds, top_n=top_n)
+    return NonEmptyTuple((vocab[i], sim) for i, sim in docs)
 
 
 class DescribeArgs:
@@ -45,6 +49,8 @@ class DescribeArgs:
 
     @staticmethod
     def run(*, path: str, db: Path | None, n: int) -> None:
+        if n <= 0:
+            raise SystemExit("number of captions must be positive")
         cap_torch_threads()
         db_path = db if db is not None else default_db_path()
         if not db_path.is_file():

@@ -10,25 +10,24 @@ import re
 import time
 from importlib import resources
 
+from local_smart_playlist.type_utils import NonEmptyTuple
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "https://opencode.ai/zen/go/v1"  # OpenCode Go subscription
 DEFAULT_MODEL = "deepseek-v4-flash"
 
 
-def _load_vocab() -> str:
-    """The readout vocabulary — captions in the embedding model's text-caption style."""
-    return resources.files("local_smart_playlist.data").joinpath("caption_vocab.txt").read_text(encoding="utf-8")
-
-
-def caption_vocab() -> list[str]:
+def caption_vocab() -> NonEmptyTuple[str]:
     """Readout vocabulary lines, blank-stripped, `#` comments dropped."""
-    return [
-        line.strip() for line in _load_vocab().splitlines() if line.strip() != "" and not line.lstrip().startswith("#")
-    ]
+    # TODO: REPO_DIR const
+    vocab_text = resources.files("local_smart_playlist.data").joinpath("caption_vocab.txt").read_text(encoding="utf-8")
+    return NonEmptyTuple(
+        line.strip() for line in vocab_text.splitlines() if line.strip() != "" and not line.lstrip().startswith("#")
+    )
 
 
-_ADAPT_PROMPT = (
+ADAPT_PROMPT = (
     "You adapt a user's music request for MuQ-MuLan, a music-text embedding "
     "model whose captions use short, comma-separated lowercase attributes.\n\n"
     "For an input that is already a comma-separated attribute list (e.g. "
@@ -69,13 +68,13 @@ def _adapt_prompt() -> str:
     vocab = caption_vocab()
     count = min(12, len(vocab))
     if count == 0:
-        return _ADAPT_PROMPT
+        return ADAPT_PROMPT
     if count == 1:
         examples = vocab
     else:
         indices = [i * (len(vocab) - 1) // (count - 1) for i in range(count)]
         examples = [vocab[i] for i in indices]
-    return f"{_ADAPT_PROMPT}\n\nReadout-caption style examples:\n" + "\n".join(examples)
+    return f"{ADAPT_PROMPT}\n\nReadout-caption style examples:\n" + "\n".join(examples)
 
 
 def adapt_mood(mood: str) -> list[str]:

@@ -15,6 +15,7 @@ from local_smart_playlist.query.contrast import (
     query_vector_contrast,
     rank_by_contrast,
 )
+from local_smart_playlist.type_utils import NonEmptyTuple
 
 if TYPE_CHECKING:
     import torch
@@ -79,6 +80,12 @@ def upsert_track(store: Store, rel_path: str, window_vecs: np.ndarray) -> None:
     )
 
 
+def test_non_empty_tuple_rejects_empty_iterable() -> None:
+    empty: list[str] = []
+    with pytest.raises(ValueError, match="NonEmptyTuple cannot be empty"):
+        _ = NonEmptyTuple(empty)
+
+
 def test_mood_bank_covers_broad_moods() -> None:
     """Anchor set is non-trivial: enough breadth for a meaningful baseline."""
     assert len(MOOD_ANCHORS) >= 12
@@ -124,7 +131,7 @@ def test_sustained_fit_beats_peak() -> None:
     """Track fitting throughout outranks track with one matching window."""
     q = basis(0)
     anchor_bank = _embedder_for({"a": 1, "b": 2})  # baseline spans b1/b2, orthogonal to q
-    bvec = baseline_vector(anchor_bank, anchors=["a", "b"])
+    bvec = baseline_vector(anchor_bank, anchors=NonEmptyTuple(("a", "b")))
 
     store = Store(Path(":memory:"), embed_dim=DIM)
     upsert_track(store, "steady.mp3", np.stack([basis(0)] * 4))
@@ -158,7 +165,7 @@ def test_rank_ties_break_by_coverage_then_path() -> None:
 def test_rank_respects_k_and_exclude() -> None:
     q = basis(0)
     anchor_bank = _embedder_for({"a": 1, "b": 2})
-    bvec = baseline_vector(anchor_bank, anchors=["a", "b"])
+    bvec = baseline_vector(anchor_bank, anchors=NonEmptyTuple(("a", "b")))
     store = Store(Path(":memory:"), embed_dim=DIM)
     for i in range(3):
         upsert_track(store, f"t{i}.mp3", np.stack([basis(0)] * 2))

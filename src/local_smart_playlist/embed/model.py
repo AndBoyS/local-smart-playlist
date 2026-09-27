@@ -91,7 +91,7 @@ class MuLanEmbedder[D: IntVar]:
         with torch.no_grad():
             for i, batch in enumerate(batches(windows, batch_size=batch_size)):
                 wavs_24k = _to_24k(batch)
-                wavs = torch.tensor(np.stack(wavs_24k), dtype=torch.float32).to(device)
+                wavs = torch.tensor(np.stack(wavs_24k), dtype=torch.float32, device=device)
                 raw = torch_to_numpy(self.model(wavs=wavs))
                 # numpy shape stubs lack __setitem__ (facebook/pyrefly#4901); slice-assign is valid at runtime.
                 out[i * batch_size : i * batch_size + len(batch)] = raw  # pyrefly: ignore[unsupported-operation]
@@ -141,9 +141,24 @@ def _snapshot_dir(model_id: str) -> Path | None:
     else:
         candidates.extend(s for s in snapshots.iterdir() if s.is_dir())
     for candidate in candidates:
-        if candidate.is_dir() and any(candidate.iterdir()):
+        if candidate.is_dir() and (candidate / "config.json").is_file():
             return candidate
     return None
+
+
+def _hub_submodels_cached(snapshot: Path, *, text_only: bool) -> bool:
+    """Whether every pretrained component needed from *snapshot* is locally cached."""
+    config = json.loads((snapshot / "config.json").read_text(encoding="utf-8"))
+    assert isinstance(config, dict)
+    component_names = ("text_model",) if text_only else ("audio_model", "text_model")
+    for component_name in component_names:
+        component = config.get(component_name)
+        assert isinstance(component, dict)
+        model_id = component.get("name")
+        assert isinstance(model_id, str)
+        if _snapshot_dir(model_id) is None:
+            return False
+    return True
 
 
 def _load_muq_safetensors(snapshot: Path) -> nn.Module:
@@ -269,14 +284,14 @@ def load_model(*, device: str | None = None, text_only: bool = False) -> MuLanEm
     Every run against a converted snapshot takes the fast path: mmap'd
     safetensors weights assigned in place, no pickle parse, no 2.5 GB copy.
     ``text_only=True`` skips the audio tower entirely (play/describe never
-    embed audio) — construction and memory drop accordingly. When the
-    snapshot is cached, ``HF_HUB_OFFLINE`` is set before the muq import so
-    the tokenizer and sub-model loads skip hub metadata checks. Pass
+    embed audio) — construction and memory drop accordingly. ``HF_HUB_OFFLINE``
+    is set only when all required pretrained submodels are cached; a cached
+    MuQ-MuLan snapshot alone does not include those submodels. Pass
     ``device="cpu"`` for text-only paths (embedding large audio batches is
     the only case where the GPU device wins).
     """
     snapshot = _snapshot_dir(MODEL_ID)
-    if snapshot is not None:
+    if snapshot is not None and _hub_submodels_cached(snapshot, text_only=text_only):
         _ = os.environ.setdefault("HF_HUB_OFFLINE", "1")
     model = _load_weights(snapshot, text_only=text_only)
     _ = model.to(device if device is not None else pick_device())

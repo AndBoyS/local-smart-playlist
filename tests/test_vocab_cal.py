@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 from local_smart_playlist.embed.model import MuLanEmbedder
 from local_smart_playlist.index.store import MetaKey, Store
-from local_smart_playlist.query.contrast import baseline_vector
+from local_smart_playlist.query.contrast import baseline_vector, baseline_vector_cached
 from local_smart_playlist.query.vocab_cal import (
     MARGIN_TAU,
     rank_by_vocab_calibration,
@@ -112,6 +112,47 @@ def test_vocab_bank_cache_uses_fixed_meta_key(tmp_path: Path) -> None:
         changed_vocab = NonEmptyTuple(("cap b", "cap a", "cap c", "cap d"))
         _ = vocab_vector_bank_cached(store, model, vocab=changed_vocab)
         assert calls == [len(VOCAB), len(changed_vocab)]
+
+
+def test_baseline_vector_cache_tracks_model_and_anchor_identity(tmp_path: Path) -> None:
+    calls: list[int] = []
+
+    class CountingModel:
+        def __call__(self, *, texts: "list[str] | None" = None, wavs: "torch.Tensor | None" = None) -> "torch.Tensor":
+            import torch
+
+            assert texts is not None
+            calls.append(len(texts))
+            return torch.from_numpy(fake_embedder(texts))
+
+    model = MuLanEmbedder(CountingModel(), dim=DIM)
+    anchors = NonEmptyTuple(("anchor a", "anchor b"))
+    with Store(tmp_path / "baseline-cache.db", embed_dim=DIM) as store:
+        first = baseline_vector_cached(store, model, anchors=anchors)
+        encoded = store.get_meta(MetaKey.MOOD_BASELINE_VEC)
+        assert encoded is not None
+        assert encoded.startswith("v1\nOpenMuQ/MuQ-MuLan-large\n")
+
+        encoded_parts = encoded.split("\n", maxsplit=3)
+        assert len(encoded_parts) == 4
+        store.set_meta(
+            MetaKey.MOOD_BASELINE_VEC,
+            "\n".join((encoded_parts[0], "other/model", encoded_parts[2], encoded_parts[3])),
+        )
+        second = baseline_vector_cached(store, model, anchors=anchors)
+        assert np.array_equal(first, second)
+        assert calls == [len(anchors), len(anchors)]
+
+        _ = baseline_vector_cached(store, model, anchors=anchors)
+        assert calls == [len(anchors), len(anchors)]
+
+        changed_anchors = NonEmptyTuple(("anchor b", "anchor a"))
+        _ = baseline_vector_cached(store, model, anchors=changed_anchors)
+        assert calls == [len(anchors), len(anchors), len(changed_anchors)]
+
+        store.set_meta(MetaKey.MOOD_BASELINE_VEC, "invalid cache")
+        _ = baseline_vector_cached(store, model, anchors=changed_anchors)
+        assert calls == [len(anchors), len(anchors), len(changed_anchors), len(changed_anchors)]
 
 
 def test_percentile_counts_captions_beaten() -> None:

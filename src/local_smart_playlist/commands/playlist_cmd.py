@@ -10,7 +10,7 @@ from local_smart_playlist.commands import vacuum_worker
 from local_smart_playlist.config import default_db_path, default_playlist_dir
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
 from local_smart_playlist.index.store import MetaKey, Store, TrackData
-from local_smart_playlist.query.contrast import baseline_vector, query_vector_contrast
+from local_smart_playlist.query.contrast import baseline_vector_cached, query_vector_contrast
 from local_smart_playlist.query.playlist import playlist_path, write_playlist
 from local_smart_playlist.query.prompts import adapt_mood, caption_vocab
 from local_smart_playlist.query.search import rank_by_similarity
@@ -93,7 +93,7 @@ class PlayArgs:
                     for variant in adapted:
                         print(f"  - {variant}")
                 model = load_model(device="cpu", text_only=True)
-                bvec = baseline_vector(model)
+                bvec = baseline_vector_cached(store, model)
                 vocab_vecs = vocab_vector_bank_cached(store, model, vocab=caption_vocab())
                 per_query_rankings = [
                     rank_by_vocab_calibration(

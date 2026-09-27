@@ -51,6 +51,7 @@ class MetaKey(StrEnum):
     MODEL = "model"
     LIBRARY_ROOT = "library_root"
     VOCAB_VECS = "vocab_vecs"
+    MOOD_BASELINE_VEC = "mood_baseline_vec"
 
 
 MIN_VACUUM_FREE_BYTES = 50 * 1024 * 1024

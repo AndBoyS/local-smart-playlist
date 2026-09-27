@@ -20,14 +20,16 @@ per-anchor affinity ("music in general") per window, and the track score is
 the *median* margin, so most of the track must fit.
 """
 
+import base64
+import hashlib
 from dataclasses import dataclass
 
 import numpy as np
 from shape_extensions import IntVar
 
-from local_smart_playlist.embed.model import MuLanEmbedder
-from local_smart_playlist.index.store import Store, TrackData
-from local_smart_playlist.numpy_helpers import l2_normalize
+from local_smart_playlist.embed.model import MODEL_ID, MuLanEmbedder
+from local_smart_playlist.index.store import MetaKey, Store, TrackData
+from local_smart_playlist.numpy_helpers import l2_normalize, reshape
 from local_smart_playlist.type_utils import NonEmptyTuple
 
 W = IntVar("W")  # window count
@@ -74,6 +76,53 @@ def baseline_vector(model: MuLanEmbedder[D], *, anchors: NonEmptyTuple[str] | No
     embeddings = model.embed_texts(prompts)
     vecs = l2_normalize(embeddings)
     return vecs.mean(axis=0)
+
+
+_BASELINE_CACHE_FORMAT = "v1"
+_BASELINE_CACHE_PART_COUNT = 4
+
+
+def _baseline_digest(anchors: NonEmptyTuple[str]) -> str:
+    return hashlib.sha256("\n".join(anchors).encode("utf-8")).hexdigest()
+
+
+def _decode_baseline(*, blob: str, dim: int, anchors_digest: str) -> np.ndarray[[D]] | None:
+    parts = blob.split("\n", maxsplit=3)
+    if (
+        len(parts) != _BASELINE_CACHE_PART_COUNT
+        or parts[0] != _BASELINE_CACHE_FORMAT
+        or parts[1] != MODEL_ID
+        or parts[2] != anchors_digest
+    ):
+        return None
+    try:
+        vec = np.frombuffer(base64.b64decode(parts[3], validate=True), dtype=np.float32)
+    except ValueError:
+        return None
+    if vec.size != dim:
+        return None
+    return reshape(vec, (dim,))
+
+
+def baseline_vector_cached(
+    store: Store,
+    model: MuLanEmbedder[D],
+    *,
+    anchors: NonEmptyTuple[str] | None = None,
+) -> np.ndarray[[D]]:
+    """Cache the static baseline embedding by model and anchor identity."""
+    prompts = MOOD_ANCHORS if anchors is None else anchors
+    digest = _baseline_digest(prompts)
+    cached = store.get_meta(MetaKey.MOOD_BASELINE_VEC)
+    if cached is not None:
+        vec = _decode_baseline(blob=cached, dim=model.dim, anchors_digest=digest)
+        if vec is not None:
+            return vec
+
+    vec = baseline_vector(model, anchors=prompts)
+    encoded = base64.b64encode(np.ascontiguousarray(vec, dtype=np.float32).tobytes()).decode("ascii")
+    store.set_meta(MetaKey.MOOD_BASELINE_VEC, "\n".join((_BASELINE_CACHE_FORMAT, MODEL_ID, digest, encoded)))
+    return vec
 
 
 def query_vector_contrast(mood: str, model: MuLanEmbedder[D]) -> np.ndarray[[D]]:

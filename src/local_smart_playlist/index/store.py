@@ -40,7 +40,7 @@ class BatchedVectors[N: IntVar, D: IntVar]:
     window_sizes: list[int]
 
 
-SCHEMA_VERSION = "4"
+SCHEMA_VERSION = "3"
 
 
 class MetaKey(StrEnum):
@@ -161,7 +161,7 @@ class Store:
         database = fsdecode(db_path)
         self._engine = create_engine(URL.create("sqlite", database=database))
         _ = event.listen(self._engine, "connect", self._enable_fkeys_constrain_check)
-        self._migrate()
+        self._initialize_schema()
 
     @staticmethod
     def _enable_fkeys_constrain_check(dbapi_connection: sqlite3.Connection, _: object) -> None:
@@ -173,78 +173,20 @@ class Store:
     def __exit__(self, *exc: object) -> None:
         self._engine.dispose()
 
-    def _migrate(self) -> None:
+    def _initialize_schema(self) -> None:
         _ = TableRegistry.metadata.create_all(self._engine)
-        with self._engine.begin() as connection:
-            _ = connection.exec_driver_sql("DELETE FROM meta WHERE key LIKE 'vocab_vecs:%'")
-            _ = connection.exec_driver_sql(
-                "UPDATE meta SET key = ? WHERE key = ?",
-                [(key.name, key.value) for key in MetaKey],
-            )
         version = self.get_meta(MetaKey.SCHEMA_VERSION)
         if version is None:
             self.set_meta(MetaKey.SCHEMA_VERSION, SCHEMA_VERSION)
-        else:
-            if version == "2":
-                self._migrate_v2_windows()
-                version = "3"
-            if version == "3":
-                self._migrate_v3_window_fk()
-                version = SCHEMA_VERSION
-            if version != SCHEMA_VERSION:
-                msg = f"index schema v{version} does not match v{SCHEMA_VERSION}; delete the index or pin a release"
-                raise RuntimeError(msg)
+        elif version != SCHEMA_VERSION:
+            msg = f"index schema v{version} does not match v{SCHEMA_VERSION}; delete the index and re-index"
+            raise RuntimeError(msg)
         self._ensure_vec_dim()
-
-    def _migrate_v2_windows(self) -> None:
-        """v2 windows table (row per window) -> v3 window_blocks (blob per track)."""
-        with self._engine.begin() as connection:
-            result = connection.exec_driver_sql("SELECT rel_path, vec FROM windows ORDER BY rel_path, window_idx")
-            rows = result.all()
-            blocks: list[tuple[str, bytes]] = []
-            current_rel: str | None = None
-            parts: list[bytes] = []
-            for rel, blob in rows:
-                rel_path = verify_type(rel, str)
-                part = verify_type(blob, bytes)
-                if rel_path != current_rel:
-                    if current_rel is not None:
-                        blocks.append((current_rel, b"".join(parts)))
-                    current_rel = rel_path
-                    parts = []
-                parts.append(part)
-            if current_rel is not None:
-                blocks.append((current_rel, b"".join(parts)))
-            if len(blocks) > 0:
-                _ = connection.exec_driver_sql(
-                    "INSERT OR REPLACE INTO window_blocks(rel_path, vec) VALUES (?, ?)", blocks
-                )
-            _ = connection.exec_driver_sql("DROP TABLE windows")
-        self.set_meta(MetaKey.SCHEMA_VERSION, "3")
-
-    def _migrate_v3_window_fk(self) -> None:
-        """Remove database-level cascade; prune_missing deletes child rows explicitly."""
-        with self._engine.begin() as connection:
-            _ = connection.exec_driver_sql(
-                """
-                CREATE TABLE window_blocks_v4 (
-                    rel_path TEXT NOT NULL PRIMARY KEY,
-                    vec BLOB NOT NULL,
-                    FOREIGN KEY (rel_path) REFERENCES tracks (rel_path)
-                )
-                """
-            )
-            _ = connection.exec_driver_sql(
-                "INSERT INTO window_blocks_v4 (rel_path, vec) SELECT rel_path, vec FROM window_blocks"
-            )
-            _ = connection.exec_driver_sql("DROP TABLE window_blocks")
-            _ = connection.exec_driver_sql("ALTER TABLE window_blocks_v4 RENAME TO window_blocks")
-        self.set_meta(MetaKey.SCHEMA_VERSION, SCHEMA_VERSION)
 
     def _ensure_vec_dim(self) -> None:
         """Validate stored vector dimension, initializing it for new indexes."""
         stored_dim = self.get_meta(MetaKey.VEC_DIM)
-        if stored_dim is not None and int(stored_dim) != self.embed_dim:
+        if stored_dim is not None and stored_dim != self.embed_dim:
             msg = f"index has {stored_dim}-dim vectors but {self.embed_dim} requested; delete the index and re-index"
             raise RuntimeError(msg)
         if stored_dim is None:
@@ -314,6 +256,7 @@ class Store:
         """
         ids = list(rel_paths)
         rows: list[tuple[str, bytes]] = []
+        # TODO
         chunk_size = 400  # sqlite variable limit headroom
         with Session(self._engine) as session:
             for start in range(0, len(ids), chunk_size):

@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from local_smart_playlist.index.store import MetaKey, Store
+from local_smart_playlist.index.store import Store
 
 DIM = 64
 
@@ -110,32 +110,6 @@ def test_schema_version_mismatch(tmp_path: Path) -> None:
         pass
 
 
-def test_legacy_vocab_cache_meta_keys_are_removed(tmp_path: Path) -> None:
-    db = tmp_path / "legacy-cache.db"
-    with Store(db, embed_dim=DIM) as store, store._engine.begin() as connection:
-        _ = connection.exec_driver_sql(
-            "INSERT INTO meta(key, value) VALUES (?, ?)",
-            [("vocab_vecs:old-model:old-digest", "old cache")],
-        )
-        _ = connection.exec_driver_sql("UPDATE meta SET key = 'schema_version' WHERE key = 'SCHEMA_VERSION'")
-
-    with Store(db, embed_dim=DIM) as store:
-        with store._engine.connect() as connection:
-            legacy_cache_count = connection.exec_driver_sql(
-                "SELECT COUNT(*) FROM meta WHERE key LIKE 'vocab_vecs:%'"
-            ).scalar_one()
-            legacy_key_count = connection.exec_driver_sql(
-                "SELECT COUNT(*) FROM meta WHERE key = 'schema_version'"
-            ).scalar_one()
-            enum_key_count = connection.exec_driver_sql(
-                "SELECT COUNT(*) FROM meta WHERE key = 'SCHEMA_VERSION'"
-            ).scalar_one()
-        assert legacy_cache_count == 0
-        assert legacy_key_count == 0
-        assert enum_key_count == 1
-        assert store.get_meta(MetaKey.SCHEMA_VERSION) == "4"
-
-
 def test_windows_roundtrip_and_prune(tmp_path: Path) -> None:
     store = Store(tmp_path / "win.db", embed_dim=DIM)
     vec = basis_vec(3)
@@ -174,7 +148,7 @@ def test_windows_roundtrip_and_prune(tmp_path: Path) -> None:
     )
     assert store.window_count() == 0
 
-    # prune cascades
+    # prune explicitly removes windows before tracks
     upsert(store, "a.mp3", 0, window_vecs=np.stack([basis_vec(0)]))
     _removed = store.prune_missing({"b.mp3"})
     assert store.window_count() == 0
@@ -192,103 +166,19 @@ def test_track_meta_without_vectors(store: Store) -> None:
         assert m.vectors is None
 
 
-def test_migrate_v2_windows_to_blocks(tmp_path: Path) -> None:
-    """v2 row-per-window DB upgrades in place to v4 window_blocks."""
+def test_prune_explicitly_removes_windows_before_tracks(tmp_path: Path) -> None:
     import sqlite3
 
-    path = tmp_path / "v2.db"
-    conn = sqlite3.connect(path)
-    _ = conn.executescript(
-        """
-        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-        CREATE TABLE tracks (
-            rel_path TEXT PRIMARY KEY,
-            mean_vec BLOB NOT NULL,
-            p90_vec BLOB NOT NULL,
-            n_windows INTEGER NOT NULL,
-            duration REAL NOT NULL,
-            title TEXT NOT NULL,
-            model TEXT NOT NULL,
-            indexed_at TEXT NOT NULL
-        );
-        CREATE TABLE windows (
-            rel_path TEXT NOT NULL REFERENCES tracks(rel_path) ON DELETE CASCADE,
-            window_idx INTEGER NOT NULL,
-            vec BLOB NOT NULL,
-            PRIMARY KEY (rel_path, window_idx)
-        );
-        """
-    )
-    vec = basis_vec(2)
-    _ = conn.execute("INSERT INTO meta VALUES ('schema_version', '2')")
-    _ = conn.execute(
-        "INSERT INTO tracks VALUES ('a.mp3', ?, ?, 2, 60.0, 'a', 'test', 'now')",
-        (np.ascontiguousarray(vec, dtype=np.float32).tobytes(),) * 2,
-    )
-    _ = conn.executemany(
-        "INSERT INTO windows VALUES (?, ?, ?)",
-        [
-            ("a.mp3", 0, np.ascontiguousarray(basis_vec(0), dtype=np.float32).tobytes()),
-            ("a.mp3", 1, np.ascontiguousarray(basis_vec(1), dtype=np.float32).tobytes()),
-        ],
-    )
-    conn.commit()
-    conn.close()
-
-    store = Store(path, embed_dim=DIM)  # triggers migration
-    assert store.get_meta(MetaKey.SCHEMA_VERSION) == "4"
-    assert store.window_count() == 2
-    loaded = store.load_windows(["a.mp3"])
-    assert np.allclose(loaded["a.mp3"], np.stack([basis_vec(0), basis_vec(1)]))
-
-    # upsert still writes windows after migration
-    upsert(store, "a.mp3", 4, window_vecs=np.stack([basis_vec(4)]))
-    assert store.window_count() == 1
-    # pyrefly: ignore[unknown-argument-type]
-    assert np.allclose(store.load_windows(["a.mp3"])["a.mp3"], basis_vec(4).reshape(1, DIM))
-
-
-def test_migrate_v3_removes_window_delete_cascade(tmp_path: Path) -> None:
-    import sqlite3
-
-    path = tmp_path / "v3.db"
-    conn = sqlite3.connect(path)
-    _ = conn.executescript(
-        """
-        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-        CREATE TABLE tracks (
-            rel_path TEXT PRIMARY KEY,
-            mean_vec BLOB NOT NULL,
-            p90_vec BLOB NOT NULL,
-            n_windows INTEGER NOT NULL,
-            duration REAL NOT NULL,
-            title TEXT NOT NULL,
-            model TEXT NOT NULL,
-            indexed_at TEXT NOT NULL
-        );
-        CREATE TABLE window_blocks (
-            rel_path TEXT NOT NULL PRIMARY KEY REFERENCES tracks(rel_path) ON DELETE CASCADE,
-            vec BLOB NOT NULL
-        );
-        """
-    )
-    vec = basis_vec(0).tobytes()
-    _ = conn.execute("INSERT INTO meta VALUES ('schema_version', '3')")
-    _ = conn.execute("INSERT INTO tracks VALUES ('a.mp3', ?, ?, 1, 60.0, 'a', 'test', 'now')", (vec, vec))
-    _ = conn.execute("INSERT INTO window_blocks VALUES ('a.mp3', ?)", (vec,))
-    conn.commit()
-    conn.close()
-
+    path = tmp_path / "prune.db"
     with Store(path, embed_dim=DIM) as store:
-        assert store.get_meta(MetaKey.SCHEMA_VERSION) == "4"
-        assert store.window_count() == 1
-
+        upsert(store, "a.mp3", 0, window_vecs=np.stack([basis_vec(0)]))
         check = sqlite3.connect(path)
         _ = check.execute("PRAGMA foreign_keys=ON")
         with pytest.raises(sqlite3.IntegrityError):
             _ = check.execute("DELETE FROM tracks WHERE rel_path = ?", ("a.mp3",))
         check.close()
 
+        assert store.window_count() == 1
         assert store.prune_missing(set()) == 1
         assert store.window_count() == 0
 

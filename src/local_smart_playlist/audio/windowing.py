@@ -29,8 +29,8 @@ def frame_rms(
     if n_frames == 0:
         return np.array([], dtype=np.float32)
     frames = reshape(samples[: n_frames * frame_len], (n_frames, frame_len))
-    squares = frames.astype(np.float64) ** 2
-    return np.sqrt(squares.mean(axis=1)).astype(np.float32)
+    squares = frames ** 2
+    return np.sqrt(squares.mean(axis=1))
 
 
 def trim_silence(samples: np.ndarray[[N]], *, sr: int = TARGET_SR, threshold_db: float = TRIM_DB) -> np.ndarray[[N]]:

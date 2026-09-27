@@ -56,7 +56,7 @@ def decode_mono(path: Path) -> tuple[np.ndarray[[N]], float]:
             msg = f"decode failed: {first_exc}"
             raise DecodeError(msg) from first_exc
 
-    mono = samples.mean(axis=1).astype(np.float32)
+    mono = samples.mean(axis=1)
     if sr != TARGET_SR:
         mono = soxr.resample(mono, sr, TARGET_SR).astype(np.float32)
     duration = len(mono) / TARGET_SR

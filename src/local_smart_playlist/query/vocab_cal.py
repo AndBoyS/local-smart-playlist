@@ -135,8 +135,8 @@ def vocab_calibration_score(
     if any(size <= 0 for size in sizes) or sum(sizes) != int(flat_vecs.shape[0]):
         raise ValueError("track_sizes must partition window_vecs into positive track sizes")
 
-    sims_q = (flat_vecs @ query_vec).astype(np.float64)
-    sims_v = (flat_vecs @ vocab_vecs.T).astype(np.float64)
+    sims_q = flat_vecs @ query_vec
+    sims_v = flat_vecs @ vocab_vecs.T
     scores: list[VocabCalScore] = []
     start = 0
     for size in sizes:
@@ -144,7 +144,7 @@ def vocab_calibration_score(
         track_sims_q = sims_q[start:end]
         track_sims_v = sims_v[start:end]
         if float(track_sims_v.max()) < VOCAB_COVER_FLOOR:
-            sims_m = (flat_vecs[start:end] @ margin_vec).astype(np.float64)
+            sims_m = flat_vecs[start:end] @ margin_vec
             margins = track_sims_q - sims_m
             z = margins.mean() / MARGIN_TAU
             score = float(1.0 / (1.0 + np.exp(-z)))

@@ -142,11 +142,10 @@ class ContrastScore:
 
 def _median(values: np.ndarray[[W]]) -> float:
     """Median without np.median (shape stubs track the module form poorly)."""
-    ordered = np.asarray(values, dtype=np.float64).copy()
-    # asarray kept: `values` arrives typed as ndarray but may be a list at call sites
-    n = ordered.shape[0]
+    n = values.shape[0]
     if n == 0:
         return 0.0
+    ordered = values.copy()
     ordered.sort()  # in-place method form; np.sort module form is untracked
     mid = n // 2
     if n % 2 == 1:
@@ -158,8 +157,8 @@ def contrast_score(
     window_vecs: np.ndarray[[W, D]], *, query_vec: np.ndarray[[D]], baseline_vec: np.ndarray[[D]]
 ) -> ContrastScore:
     """Median query-vs-baseline margin and positive-margin coverage over windows."""
-    sims_q = (window_vecs @ query_vec).astype(np.float64).ravel()
-    sims_b = (window_vecs @ baseline_vec).astype(np.float64).ravel()
+    sims_q = (window_vecs @ query_vec).ravel()
+    sims_b = (window_vecs @ baseline_vec).ravel()
     margins = sims_q - sims_b
     # Python-level count keeps stub-untracked ndarray ops out; n is small (~tens of windows)
     values = margins.tolist()

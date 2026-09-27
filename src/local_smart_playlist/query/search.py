@@ -27,12 +27,10 @@ def _rescore_flat(
     """
     if len(paths) == 0:
         return {}
-    q32 = np.asarray(query_vec, dtype=np.float32)
-    q64 = np.asarray(query_vec, dtype=np.float64)
     starts = np.cumsum([0, *counts[:-1]])
     ends = np.cumsum(counts)
 
-    sims = np.asarray(big @ q32, dtype=np.float64)
+    sims = big @ query_vec
     starts = np.cumsum([0, *counts[:-1]]).tolist()
     ends = np.cumsum(counts).tolist()
     scores: dict[str, float] = {}
@@ -43,9 +41,9 @@ def _rescore_flat(
         if alpha < 1.0:
             # track-mean cos == mean of window sims, but the mean-vector norm
             # still needs the window block itself
-            mean_vec = big[s:e].mean(axis=0).astype(np.float64)
+            mean_vec = big[s:e].mean(axis=0)
             mean_norm = float(np.linalg.norm(mean_vec))
-            mean_sim = float(mean_vec @ q64) / mean_norm if mean_norm > 0.0 else 0.0
+            mean_sim = float(mean_vec @ query_vec) / mean_norm if mean_norm > 0.0 else 0.0
         scores[p] = alpha * peak + (1.0 - alpha) * mean_sim
     return scores
 
@@ -73,8 +71,8 @@ def rank_by_similarity(
     if len(track_to_mean) == 0:
         return []
     paths = list(track_to_mean)
-    mean_matrix = np.stack(list(track_to_mean.values())).astype(np.float64)
-    sims = (mean_matrix @ np.asarray(query_vec, dtype=np.float64)).ravel()
+    mean_matrix = np.stack(list(track_to_mean.values()))
+    sims = (mean_matrix @ query_vec).ravel()
     order = np.argsort(-sims)[:query_amount]
     path_to_mean_sim = {paths[int(i.item())]: float(sims[i]) for i in order}
 

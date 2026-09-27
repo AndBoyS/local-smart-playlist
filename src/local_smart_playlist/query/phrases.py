@@ -22,7 +22,7 @@ def track_documents(
     """(vocab_index, sim) for the *top_n* vocab phrases nearest to a unit track-mean vector."""
     if top_n <= 0:
         raise ValueError("top_n must be positive")
-    sims = (vocab_vecs @ np.asarray(mean_vec, dtype=np.float32)).astype(np.float64).ravel()
+    sims = (vocab_vecs @ mean_vec).ravel()
     count = min(top_n, vocab_vecs.shape[0])
     order = np.argsort(-sims)[:count]
     return NonEmptyTuple((int(i), float(sims[int(i)])) for i in order)

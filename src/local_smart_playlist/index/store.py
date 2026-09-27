@@ -186,7 +186,7 @@ class Store:
     def _ensure_vec_dim(self) -> None:
         """Validate stored vector dimension, initializing it for new indexes."""
         stored_dim = self.get_meta(MetaKey.VEC_DIM)
-        if stored_dim is not None and stored_dim != self.embed_dim:
+        if stored_dim is not None and stored_dim != str(self.embed_dim):
             msg = f"index has {stored_dim}-dim vectors but {self.embed_dim} requested; delete the index and re-index"
             raise RuntimeError(msg)
         if stored_dim is None:

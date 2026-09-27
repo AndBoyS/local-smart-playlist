@@ -8,8 +8,8 @@ import logging
 import os
 import re
 import time
-from importlib import resources
 
+from local_smart_playlist.const import CAPTION_VOCAB_PATH
 from local_smart_playlist.type_utils import NonEmptyTuple
 
 logger = logging.getLogger(__name__)
@@ -20,8 +20,7 @@ DEFAULT_MODEL = "deepseek-v4-flash"
 
 def caption_vocab() -> NonEmptyTuple[str]:
     """Readout vocabulary lines, blank-stripped, `#` comments dropped."""
-    # TODO: REPO_DIR const
-    vocab_text = resources.files("local_smart_playlist.data").joinpath("caption_vocab.txt").read_text(encoding="utf-8")
+    vocab_text = CAPTION_VOCAB_PATH.read_text(encoding="utf-8")
     return NonEmptyTuple(
         line.strip() for line in vocab_text.splitlines() if line.strip() != "" and not line.lstrip().startswith("#")
     )

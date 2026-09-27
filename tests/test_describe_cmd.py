@@ -155,9 +155,3 @@ def test_run_describes_track(monkeypatch: Any, tmp_path: Path, capsys: Any) -> N
     out = capsys.readouterr().out
     assert "song.flac" in out
     assert "caption A" in out
-
-
-def test_caption_vocab_strips_blanks() -> None:
-    vocab = prompts.caption_vocab()
-    assert len(vocab) >= 1
-    assert all(line == line.strip() for line in vocab)

@@ -1,4 +1,4 @@
-"""Vocab-calibration ranker tests: percentiles, guard fallback, ranking order."""
+"""Vocab-calibration ranker tests: percentiles, vectorized aggregation, ranking order."""
 
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -13,7 +13,6 @@ from local_smart_playlist.embed.model import MuLanEmbedder
 from local_smart_playlist.index.store import MetaKey, Store
 from local_smart_playlist.query.contrast import baseline_vector, baseline_vector_cached
 from local_smart_playlist.query.vocab_cal import (
-    MARGIN_TAU,
     rank_by_vocab_calibration,
     vocab_calibration_score,
     vocab_vector_bank,
@@ -159,13 +158,12 @@ def test_percentile_counts_captions_beaten() -> None:
     """Window on the query direction beats 3 of 4 vocab captions (one is itself)."""
     q = basis(0)
     bank = _vocab_vecs({"cap a": 0, "cap b": 1, "cap c": 2, "cap d": 3})
-    margin_vec = basis(1)
     # window == query direction: sims_v = [1, 0, 0, 0], sim_q = 1 -> beaten 3/4
-    on = vocab_calibration_score(np.stack([basis(0)]), query_vec=q, vocab_vecs=bank, margin_vec=margin_vec)[0]
+    on = vocab_calibration_score(np.stack([basis(0)]), query_vec=q, vocab_vecs=bank)[0]
     assert on.score == pytest.approx(0.75, abs=1e-6)
     assert on.coverage == pytest.approx(1.0)  # 0.75 > 0.5
     # off-mood but vocab-covered window: sim_q = 0, sims_v = [0, 1, 0, 0] -> beaten 0/4
-    off = vocab_calibration_score(np.stack([basis(1)]), query_vec=q, vocab_vecs=bank, margin_vec=basis(5))[0]
+    off = vocab_calibration_score(np.stack([basis(1)]), query_vec=q, vocab_vecs=bank)[0]
     assert off.score == pytest.approx(0.0, abs=1e-6)
 
 
@@ -173,49 +171,52 @@ def test_score_averages_window_percentiles() -> None:
     """Two windows: one at 0.75, one at 0.0 -> track score 0.375, coverage 0.5."""
     q = basis(0)
     bank = _vocab_vecs({"cap a": 0, "cap b": 1, "cap c": 2, "cap d": 3})
-    result = vocab_calibration_score(np.stack([basis(0), basis(1)]), query_vec=q, vocab_vecs=bank, margin_vec=basis(5))[
-        0
-    ]
+    result = vocab_calibration_score(np.stack([basis(0), basis(1)]), query_vec=q, vocab_vecs=bank)[0]
     assert result.score == pytest.approx(0.375, abs=1e-6)
     assert result.coverage == pytest.approx(0.5)
 
 
-def test_guard_falls_back_to_margin_sigmoid() -> None:
-    """Track far from every vocab caption: score = sigmoid(mean margin / tau)."""
+def test_low_caption_affinity_still_uses_vocab_percentile() -> None:
+    """Even when all caption affinities are zero, use query-vs-vocab percentile."""
     q = basis(0)
-    # vocab orthogonal to the windows: best vocab sim is 0 < VOCAB_COVER_FLOOR
     bank = _vocab_vecs({"cap a": 1, "cap b": 2, "cap c": 3, "cap d": 4})
-    margin_vec = basis(5)
-    # margin = cos(w, q) - cos(w, margin_vec) = 1.0 -> sigmoid(20) ~ 1
-    hot = vocab_calibration_score(
-        np.stack([np.asarray(basis(0))]), query_vec=q, vocab_vecs=bank, margin_vec=margin_vec
-    )[0]
-    expected_hot = float(1.0 / (1.0 + np.exp(-1.0 / MARGIN_TAU)))  # pyrefly: ignore[unknown-argument-type]
-    assert hot.score == pytest.approx(expected_hot, abs=1e-6)
-    assert hot.coverage == pytest.approx(1.0)
-    # margin 0 -> neutral 0.5, same scale as percentile space
-    neutral = vocab_calibration_score(
-        np.stack([np.asarray((basis(0) + basis(5)).astype(np.float32))]),
+
+    result = vocab_calibration_score(np.stack([basis(0)]), query_vec=q, vocab_vecs=bank)[0]
+
+    assert result.score == pytest.approx(1.0, abs=1e-6)
+    assert result.coverage == pytest.approx(1.0)
+
+
+def test_track_sizes_vectorize_score_and_coverage_aggregation() -> None:
+    """Flat windows aggregate into each track's mean percentile and coverage."""
+    q = basis(0)
+    bank = _vocab_vecs({"cap a": 0, "cap b": 1, "cap c": 2, "cap d": 3})
+    windows = np.stack([basis(0), basis(1), basis(0), basis(1), basis(2)])
+
+    scores = vocab_calibration_score(
+        windows,
+        track_sizes=NonEmptyTuple((2, 3)),
         query_vec=q,
         vocab_vecs=bank,
-        margin_vec=margin_vec,
-    )[0]
-    # cos(w, q) = cos(w, margin) = 1/sqrt(2) -> margin 0
-    assert neutral.score == pytest.approx(0.5, abs=1e-6)
+    )
+
+    assert scores[0].score == pytest.approx(0.375, abs=1e-6)
+    assert scores[0].coverage == pytest.approx(0.5)
+    assert scores[1].score == pytest.approx(0.25, abs=1e-6)
+    assert scores[1].coverage == pytest.approx(1 / 3)
 
 
 def test_rank_orders_by_calibration_and_breaks_ties() -> None:
     """Sustained fit outranks a peak window; equal scores break by rel path."""
     q = basis(0)
     bank = _vocab_vecs({"cap a": 0, "cap b": 1, "cap c": 2, "cap d": 3})
-    margin_vec = basis(1)
     store = Store(Path(":memory:"), embed_dim=DIM)
     upsert_track(store, "a-steady.mp3", np.stack([basis(0)] * 4))
     upsert_track(store, "b-steady.mp3", np.stack([basis(0)] * 4))
     # one perfect window, rest orthogonal: mean percentile (0.75 + 0 + 0 + 0)/4
     upsert_track(store, "peaky.mp3", np.stack([basis(0), basis(9), basis(9), basis(9)]))
 
-    ranked = rank_by_vocab_calibration(store, query_vec=q, vocab_vecs=bank, margin_vec=margin_vec, k=3)
+    ranked = rank_by_vocab_calibration(store, query_vec=q, vocab_vecs=bank, k=3)
     assert [t.rel_path for t, _ in ranked] == ["a-steady.mp3", "b-steady.mp3", "peaky.mp3"]
     assert ranked[0][1] == pytest.approx(ranked[1][1], abs=1e-6)
     assert ranked[2][1] == pytest.approx(0.1875, abs=1e-6)
@@ -227,15 +228,14 @@ def test_batched_rank_matches_per_track_reference(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(vocab_cal, "CALIBRATION_BATCH_TRACKS", 3)
     q = basis(0)
     bank = _vocab_vecs({"cap a": 0, "cap b": 1, "cap c": 2, "cap d": 3})
-    margin = basis(1)
     half = (basis(0) + basis(1)) / np.sqrt(2.0)
-    guard_hot = (0.29 * basis(0) - 0.95 * basis(1)).astype(np.float32)
-    guard_hot /= np.linalg.norm(guard_hot)
+    low_caption_affinity = (0.29 * basis(0) - 0.95 * basis(1)).astype(np.float32)
+    low_caption_affinity /= np.linalg.norm(low_caption_affinity)
     tracks = {
         "a-normal.mp3": np.stack([basis(0), basis(0)]),
         "b-half-percentile.mp3": np.stack([half, half]),
-        "c-guard-neutral.mp3": np.stack([basis(4), basis(5)]),
-        "d-guard-hot.mp3": np.stack([guard_hot]),
+        "c-low-caption-affinity.mp3": np.stack([basis(4), basis(5)]),
+        "d-low-caption-affinity.mp3": np.stack([low_caption_affinity]),
     }
     store = Store(Path(":memory:"), embed_dim=DIM)
     for path, vectors in tracks.items():
@@ -247,13 +247,12 @@ def test_batched_rank_matches_per_track_reference(monkeypatch: pytest.MonkeyPatc
             vectors,
             query_vec=q,
             vocab_vecs=bank,
-            margin_vec=margin,
             track_sizes=NonEmptyTuple((len(vectors),)),
         )[0]
         expected.append((path, result.score, result.coverage))
     expected.sort(key=lambda item: (-item[1], -item[2], item[0]))
 
-    ranked = rank_by_vocab_calibration(store, query_vec=q, vocab_vecs=bank, margin_vec=margin, k=len(tracks))
+    ranked = rank_by_vocab_calibration(store, query_vec=q, vocab_vecs=bank, k=len(tracks))
     assert [track.rel_path for track, _ in ranked] == [path for path, _, _ in expected]
     for (_track, score), (_path, expected_score, _coverage) in zip(ranked, expected, strict=True):
         assert score == pytest.approx(expected_score, abs=1e-6)
@@ -262,19 +261,18 @@ def test_batched_rank_matches_per_track_reference(monkeypatch: pytest.MonkeyPatc
 def test_rank_respects_k_and_exclude() -> None:
     q = basis(0)
     bank = _vocab_vecs({"cap a": 0, "cap b": 1, "cap c": 2, "cap d": 3})
-    margin_vec = basis(1)
     store = Store(Path(":memory:"), embed_dim=DIM)
     upsert_track(store, "a.mp3", np.stack([basis(0)] * 2))
     upsert_track(store, "b.mp3", np.stack([basis(0)] * 2))
 
     ranked = rank_by_vocab_calibration(
-        store, query_vec=q, vocab_vecs=bank, margin_vec=margin_vec, k=1, exclude={"a.mp3"}
+        store, query_vec=q, vocab_vecs=bank, k=1, exclude={"a.mp3"}
     )
     assert [t.rel_path for t, _ in ranked] == ["b.mp3"]
 
 
 def test_real_embedder_paths_run() -> None:
-    """baseline_vector + hashed embedder compose: guard fallback path is reachable."""
+    """baseline_vector remains usable with the deterministic test embedder."""
     embedder = MuLanEmbedder(_torch_model, dim=DIM)
     bvec = baseline_vector(embedder, anchors=NonEmptyTuple(("x", "y")))
     assert bvec.shape == (DIM,)

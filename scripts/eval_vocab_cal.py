@@ -12,10 +12,9 @@ from shape_extensions import IntVar
 
 from local_smart_playlist.embed.model import MODEL_ID, cap_torch_threads, load_model
 from local_smart_playlist.index.store import Store, TrackData
-from local_smart_playlist.query.contrast import baseline_vector, query_vector_contrast
+from local_smart_playlist.query.contrast import query_vector_contrast
 from local_smart_playlist.query.prompts import caption_vocab
 from local_smart_playlist.query.vocab_cal import (
-    VOCAB_COVER_FLOOR,
     VOCAB_SCORE_FLOOR,
     rank_by_vocab_calibration,
     vocab_vector_bank,
@@ -49,13 +48,12 @@ def main() -> None:
         store.require_model(MODEL_ID)
         model = load_model()
         vocab_vecs = vocab_vector_bank(model, vocab)
-        print(f"# db={args.db}  vocab={len(vocab)}  cover-floor={VOCAB_COVER_FLOOR}")
+        print(f"# db={args.db}  vocab={len(vocab)}")
 
         for query, exemplars in probes.items():
             qvec = query_vector_contrast(query, model)
-            bvec = baseline_vector(model)
             ranked = rank_by_vocab_calibration(
-                store, query_vec=qvec, vocab_vecs=vocab_vecs, margin_vec=bvec, k=store.track_count()
+                store, query_vec=qvec, vocab_vecs=vocab_vecs, k=store.track_count()
             )
             total = len(ranked)
             scores = [s for _, s in ranked]

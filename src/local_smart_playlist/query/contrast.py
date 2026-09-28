@@ -5,8 +5,7 @@ was replaced by the caption-vocab calibration (``query/vocab_cal.py``). Its
 pieces remain live:
 
 - **MOOD_ANCHORS / baseline_vector**: the 20 broad-mood anchor bank and its
-  unnormalized mean — used as the baseline in the guard fallback of the
-  vocab-calibration ranker (tracks with uninformative vocab profiles).
+  unnormalized mean — used by the legacy median-margin contrast ranker below.
 - **query_vector_contrast**: unit embedding of the query text — still how
   text queries become vectors.
 - **contrast_score / rank_by_contrast**: the median-margin ranker, kept for

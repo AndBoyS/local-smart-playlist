@@ -13,13 +13,6 @@ Track score = mean per-window percentile in [0, 1] (sustained mood), ties
 broken by coverage (share of windows above 0.5). Semantics: 0.5 = the query
 fits as well as a typical caption for the average window of the track.
 
-Guard: tracks whose best vocab affinity is far below the library norm have
-uninformative profiles — their top captions barely describe them (measured
-on the live index: ~1% of the library below 0.30 max-vocab-sim; chiptune /
-breakcore / sparse-minimal clusters). For those tracks the score falls back
-to the 20-anchor margin passed through a sigmoid, keeping the [0, 1] scale
-with the same neutral point (margin 0 ↔ percentile 0.5).
-
 Ranking is a full-library scan over stored window vectors; the vocab must be
 re-embedded per run (215 captions, a few seconds), no re-index needed.
 """
@@ -47,14 +40,8 @@ V = IntVar("V")  # vocab size
 # threshold too (min_score, default 0.9); the floor only blocks sub-neutral
 # values — nothing below neutral is ever "on-mood".
 VOCAB_SCORE_FLOOR = 0.5
-# Tracks below this best-vocab-sim have uninformative profiles; measured
-# library p1 is 0.294 (see difficulties.md §7).
-VOCAB_COVER_FLOOR = 0.30
 CALIBRATION_BATCH_TRACKS = 256
-# Sigmoid temperature for the margin fallback; +0.10 margin → ~0.73.
-MARGIN_TAU = 0.05
-# Neutral point shared by percentile space (query beats half the captions)
-# and sigmoid space (margin 0).
+# A window counts toward coverage when it beats more than half of caption prompts.
 NEUTRAL = 0.5
 
 
@@ -124,39 +111,34 @@ def vocab_calibration_score(
     track_sizes: NonEmptyTuple[int] | None = None,
     query_vec: np.ndarray[[D]],
     vocab_vecs: np.ndarray[[V, D]],
-    margin_vec: np.ndarray[[D]],
 ) -> list[VocabCalScore]:
     """Score a flat batch of tracks; ``track_sizes`` partitions its windows.
 
     Omit ``track_sizes`` to treat all rows as one track. Otherwise, sizes must
     be positive and sum to the number of rows in ``window_vecs``.
     """
-    sizes: list[int] = [int(flat_vecs.shape[0])] if track_sizes is None else list(track_sizes)
-    if any(size <= 0 for size in sizes) or sum(sizes) != int(flat_vecs.shape[0]):
+    sizes = [flat_vecs.shape[0]] if track_sizes is None else list(track_sizes)
+    if any(size <= 0 for size in sizes) or sum(sizes) != flat_vecs.shape[0]:
         raise ValueError("track_sizes must partition window_vecs into positive track sizes")
 
     sims_q = flat_vecs @ query_vec
     sims_v = flat_vecs @ vocab_vecs.T
-    scores: list[VocabCalScore] = []
-    start = 0
-    for size in sizes:
-        end = start + size
-        track_sims_q = sims_q[start:end]
-        track_sims_v = sims_v[start:end]
-        if float(track_sims_v.max()) < VOCAB_COVER_FLOOR:
-            sims_m = flat_vecs[start:end] @ margin_vec
-            margins = track_sims_q - sims_m
-            z = margins.mean() / MARGIN_TAU
-            score = float(1.0 / (1.0 + np.exp(-z)))
-            coverage = float(np.greater(margins, 0.0).mean())
-        else:
-            beaten = np.greater(track_sims_q[:, None], track_sims_v)
-            percentiles = beaten.mean(axis=1)
-            score = float(percentiles.mean())
-            coverage = float(np.greater(percentiles, NEUTRAL).mean())
-        scores.append(VocabCalScore(score=score, coverage=coverage))
-        start = end
-    return scores
+    beaten = np.greater(sims_q[:, None], sims_v)
+    percentiles = beaten.mean(axis=1)
+    track_ids = np.repeat(np.arange(len(sizes)), sizes)
+    track_counts = np.asarray(sizes)
+    score_sums = np.bincount(track_ids, weights=percentiles, minlength=len(sizes))
+    coverage_sums = np.bincount(
+        track_ids,
+        weights=np.greater(percentiles, NEUTRAL),
+        minlength=len(sizes),
+    )
+    scores: list[float] = (score_sums / track_counts).tolist()
+    coverages: list[float] = (coverage_sums / track_counts).tolist()
+    results: list[VocabCalScore] = []
+    for score, coverage in zip(scores, coverages, strict=True):
+        results.append(VocabCalScore(score=score, coverage=coverage))
+    return results
 
 
 def rank_by_vocab_calibration(
@@ -164,15 +146,14 @@ def rank_by_vocab_calibration(
     *,
     query_vec: np.ndarray[[D]],
     vocab_vecs: np.ndarray[[V, D]],
-    margin_vec: np.ndarray[[D]],
     k: int,
     exclude: set[str] | None = None,
 ) -> list[tuple[TrackData[D], float]]:
     """Rank every indexed track by vocab-calibrated sustained mood; returns top *k*.
 
-    Mirrors :func:`rank_by_contrast`: full scan over stored window vectors,
-    ties broken by coverage then rel path. The returned score is the mean
-    per-window percentile (or fallback sigmoid margin for guard tracks).
+    Full scan over stored window vectors, ties broken by coverage then rel
+    path. Every window uses its caption-vocabulary percentile, including
+    windows with low affinity to every caption.
     """
     excluded = set() if exclude is None else set(exclude)
     flat_vecs = store.load_windows_flat(store.track_rel_paths())
@@ -195,7 +176,6 @@ def rank_by_vocab_calibration(
             track_sizes=sizes_batch,
             query_vec=query_vec,
             vocab_vecs=vocab_vecs,
-            margin_vec=margin_vec,
         )
         for path, result in zip(paths_batch, batch_scores, strict=True):
             track = path_data.get(path)

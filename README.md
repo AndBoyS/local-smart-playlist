@@ -34,11 +34,11 @@ vocabulary) — a self-referential bar that cancels most of the
 timbre-dependent audio→text similarity scale (soft ambient and dense rock
 calibrated against their own texture, not an absolute scale). The track
 score is the **mean per-window percentile**, so most of the track must fit;
-ties break by the share of windows above the 0.5 neutral point. Tracks whose
-best caption affinity is far below the library norm (uninformative profiles)
-fall back to a sigmoid of the broad-mood margin against ~20 wide-coverage
-anchors. Full-library scan over stored windows; tracks without stored
-windows must be re-indexed. Scores are absolute calibrated probabilities:
+ties break by the share of windows above the 0.5 neutral point. This same
+calculation applies even when a track has low absolute affinity to every
+caption; there is no separate margin fallback. Full-library scan over stored
+windows; tracks without stored windows must be re-indexed. Scores are absolute
+calibrated probabilities:
 0.5 = the query fits as well as a typical caption, 0.9+ = clearly on-mood;
 `--min-score` is that absolute cutoff (default 0.9), floored at 0.5.
 

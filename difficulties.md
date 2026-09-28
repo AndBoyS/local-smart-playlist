@@ -157,20 +157,20 @@ pass `--llm` for canonical attribute lists; measured harm: TFS margin
 
 ## §7 Caption-vocab calibration ranker (2026 follow-up, shipped)
 
-Production ranker replaced: `sp play` now scores tracks with the
-caption-vocab calibration (lever #5, CAF-Score style;
-`query/vocab_cal.py`), not the additive margin. The old margin ranker
-survives only as the guard-fallback path and in the eval harness.
+Production ranker: `sp play` scores tracks with caption-vocab calibration
+(lever #5, CAF-Score style; `query/vocab_cal.py`), not additive margin. The
+legacy margin ranker remains in `query/contrast.py` for historical tests; it
+is not part of production text-query scoring.
 
 Mechanism: per window, score = percentile of cos(w, query) among that
 window's cos(w, caption) values over the 215-caption `sp describe` vocab
 (self-referential bar — the window's own caption profile, not 20
 hand-picked anchors). Track score = mean window percentile; ties by
-coverage (share of windows > 0.5). Guard: tracks whose best vocab
-affinity < 0.30 (measured library p1 = 0.294; chiptune/breakcore and
-sparse-minimal clusters, see `scripts/eval_vocab_floor.py`) fall back to
-sigmoid(mean 20-anchor margin / 0.05) — same [0,1] scale, same 0.5
-neutral point.
+coverage (share of windows > 0.5). Every track uses this same percentile
+calculation, including low-caption-affinity tracks; there is no margin
+fallback. The earlier <0.30 fallback was removed after checking low-affinity
+playlist membership: for `ethereal, melancholic`, forced percentile scoring
+added one track at the 0.90 cutoff; for `energetic`, membership was unchanged.
 
 Cutoff semantics changed with the scale: scores are absolute calibrated
 probabilities, so `--min-score` is now an absolute threshold (default
@@ -196,5 +196,5 @@ TFS still sits below ~0.6% of the library, but that residue is no longer
 texture-correlated by construction of the bar.
 
 Known trade-offs: vocab re-embedded per run (215 captions, seconds);
-two score regimes (percentile vs guard-sigmoid) mix in one ranking;
+low-affinity caption profiles can still produce extreme percentiles;
 `dark, aggressive` probe unmeasured (no exemplars).
